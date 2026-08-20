@@ -11,6 +11,18 @@ export class GSBridgeAdapter {
     this.dragPos = { x: 0.5, y: 0.5 };
     this.scatterProgress = 0;
     this.onScatterProgress = null;
+    this.onResetRequest = null;
+    this.cameraState = {
+      yaw: 0,
+      pitch: Math.PI * 0.48,
+      distance: 3.4,
+      target: { x: 0, y: 0, z: 0 },
+      fov: 60
+    };
+    this.initialCameraState = structuredClone(this.cameraState);
+    this.realDrag = null;
+    this.trackedCanvas = null;
+    this.cleanupTracking = null;
   }
 
   isLocalRuntime() {
@@ -56,6 +68,7 @@ export class GSBridgeAdapter {
       };
 
       canvas.__gsKiriPrepared = true;
+      this.attachRealInputTracking(canvas);
     } catch (_) {}
   }
 
@@ -127,6 +140,11 @@ export class GSBridgeAdapter {
       this.dragPos.y,
       1
     );
+    this.cameraState.yaw -= dx * 4.2;
+    this.cameraState.pitch = Math.max(
+      0.08,
+      Math.min(Math.PI - 0.08, this.cameraState.pitch + dy * 4.2)
+    );
     return true;
   }
 
@@ -169,7 +187,80 @@ export class GSBridgeAdapter {
       })
     );
 
+    this.cameraState.distance = Math.max(0.2, Math.min(30,
+      this.cameraState.distance * Math.exp(deltaY * 7.0)
+    ));
     return true;
+  }
+
+  attachRealInputTracking(canvas) {
+    if (!canvas || this.trackedCanvas === canvas) return;
+    this.cleanupTracking?.();
+    this.trackedCanvas = canvas;
+
+    const onDown = (event) => {
+      if (event.pointerId === this.pointerId || event.button !== 0) return;
+      this.realDrag = { x: event.clientX, y: event.clientY };
+    };
+    const onMove = (event) => {
+      if (!this.realDrag || event.pointerId === this.pointerId) return;
+      const rect = canvas.getBoundingClientRect();
+      const dx = (event.clientX - this.realDrag.x) / Math.max(1, rect.width);
+      const dy = (event.clientY - this.realDrag.y) / Math.max(1, rect.height);
+      this.realDrag = { x: event.clientX, y: event.clientY };
+      this.cameraState.yaw -= dx * Math.PI * 2.0;
+      this.cameraState.pitch = Math.max(
+        0.08,
+        Math.min(Math.PI - 0.08, this.cameraState.pitch + dy * Math.PI * 2.0)
+      );
+    };
+    const onUp = () => { this.realDrag = null; };
+    const onWheel = (event) => {
+      const factor = Math.exp(Math.max(-500, Math.min(500, event.deltaY)) * 0.0015);
+      this.cameraState.distance = Math.max(0.2, Math.min(30, this.cameraState.distance * factor));
+    };
+    const onDblClick = (event) => {
+      if (event.isTrusted) this.onResetRequest?.();
+    };
+
+    canvas.addEventListener('pointerdown', onDown, true);
+    canvas.addEventListener('pointermove', onMove, true);
+    canvas.addEventListener('pointerup', onUp, true);
+    canvas.addEventListener('pointercancel', onUp, true);
+    canvas.addEventListener('wheel', onWheel, { capture: true, passive: true });
+    canvas.addEventListener('dblclick', onDblClick, true);
+
+    this.cleanupTracking = () => {
+      canvas.removeEventListener('pointerdown', onDown, true);
+      canvas.removeEventListener('pointermove', onMove, true);
+      canvas.removeEventListener('pointerup', onUp, true);
+      canvas.removeEventListener('pointercancel', onUp, true);
+      canvas.removeEventListener('wheel', onWheel, true);
+      canvas.removeEventListener('dblclick', onDblClick, true);
+    };
+  }
+
+  getCameraState() {
+    return structuredClone(this.cameraState);
+  }
+
+  setCameraState(state) {
+    if (!state) return false;
+    this.cameraState = structuredClone(state);
+    return true;
+  }
+
+  resetView() {
+    const canvas = this.getCanvas();
+    if (!canvas) return false;
+    this.endOrbit();
+    this.cameraState = structuredClone(this.initialCameraState);
+    try {
+      this.frame.contentWindow.location.reload();
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   setScatterProgress(progress) {
@@ -179,5 +270,8 @@ export class GSBridgeAdapter {
 
   destroy() {
     this.endOrbit();
+    this.cleanupTracking?.();
+    this.cleanupTracking = null;
+    this.trackedCanvas = null;
   }
 }

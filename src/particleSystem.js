@@ -4,6 +4,7 @@
  * This is an interoperability adaptation, not a verbatim copy.
  */
 import * as THREE from 'https://esm.sh/three@0.180.0?bundle';
+import { OrbitControls } from 'https://esm.sh/three@0.180.0/examples/jsm/controls/OrbitControls.js?deps=three@0.180.0';
 
 const vertexShader = `
 attribute vec3 aOriginalPosition;
@@ -79,6 +80,7 @@ export class ParticleSystem {
     this.scene = null;
     this.camera = null;
     this.renderer = null;
+    this.controls = null;
     this.points = null;
     this.material = null;
     this.pivot = null;
@@ -92,6 +94,7 @@ export class ParticleSystem {
     this.theta = 0;
     this.phi = Math.PI * 0.48;
     this.count = 0;
+    this.initialCameraState = null;
   }
 
   async init(data) {
@@ -108,6 +111,30 @@ export class ParticleSystem {
     this.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.6));
     this.renderer.domElement.className = 'particle-canvas';
     this.host.appendChild(this.renderer.domElement);
+
+    // Same control architecture as KIRI-Maker:
+    // camera + renderer.domElement + OrbitControls remain active in Particle Mode.
+    this.controls = new OrbitControls(
+      this.camera,
+      this.renderer.domElement
+    );
+    this.controls.enableDamping = true;
+    this.controls.dampingFactor = 0.05;
+    this.controls.enablePan = true;
+    this.controls.enableZoom = true;
+    this.controls.minDistance = 1.0;
+    this.controls.maxDistance = 14.0;
+    this.controls.target.set(0, 0, 0);
+    this.controls.rotateSpeed = 0.8;
+    this.controls.zoomSpeed = 0.9;
+    this.controls.panSpeed = 0.7;
+
+    // Do not let particle-canvas pointer events bubble to the hidden/underlying Viewer.
+    for (const type of ['pointerdown', 'pointermove', 'pointerup', 'wheel', 'contextmenu']) {
+      this.renderer.domElement.addEventListener(type, (event) => {
+        event.stopPropagation();
+      }, { passive: type === 'wheel' ? false : true });
+    }
 
     const { positions, colors, count } = this.centerAndScale(data);
     this.count = count;
@@ -159,6 +186,8 @@ export class ParticleSystem {
 
     this.resize();
     this.updateCamera();
+    this.controls?.update();
+    this.initialCameraState = this.getCameraState();
     this.setVisible(false);
     this.loop();
   }
@@ -222,15 +251,45 @@ export class ParticleSystem {
     }
   }
   orbit(dx, dy) {
-    this.theta -= dx * 4.2;
-    this.phi = Math.max(0.08, Math.min(Math.PI - 0.08, this.phi + dy * 4.2));
-    this.updateCamera();
+    if (!this.camera) return;
+
+    // Gesture input drives the same camera used by OrbitControls.
+    const target = this.controls?.target || new THREE.Vector3(0, 0, 0);
+    const offset = this.camera.position.clone().sub(target);
+    const spherical = new THREE.Spherical().setFromVector3(offset);
+
+    spherical.theta -= dx * 4.2;
+    spherical.phi = Math.max(
+      0.08,
+      Math.min(Math.PI - 0.08, spherical.phi + dy * 4.2)
+    );
+
+    offset.setFromSpherical(spherical);
+    this.camera.position.copy(target).add(offset);
+    this.camera.lookAt(target);
+    this.controls?.update();
   }
+
   dolly(deltaY) {
-    this.radius *= Math.exp(deltaY * 7.0);
-    this.radius = Math.max(1.2, Math.min(12, this.radius));
-    this.updateCamera();
+    if (!this.camera) return;
+
+    const target = this.controls?.target || new THREE.Vector3(0, 0, 0);
+    const offset = this.camera.position.clone().sub(target);
+    const currentRadius = Math.max(0.001, offset.length());
+    const nextRadius = Math.max(
+      this.controls?.minDistance || 1.0,
+      Math.min(
+        this.controls?.maxDistance || 14.0,
+        currentRadius * Math.exp(deltaY * 7.0)
+      )
+    );
+
+    offset.setLength(nextRadius);
+    this.camera.position.copy(target).add(offset);
+    this.camera.lookAt(target);
+    this.controls?.update();
   }
+
   updateCamera() {
     if (!this.camera) return;
     const s = Math.sin(this.phi);
@@ -240,7 +299,57 @@ export class ParticleSystem {
       this.radius * s * Math.cos(this.theta)
     );
     this.camera.lookAt(0,0,0);
+
+    if (this.controls) {
+      this.controls.target.set(0, 0, 0);
+      this.controls.update();
+    }
   }
+  getCameraState() {
+    if (!this.camera) return null;
+    const target = this.controls?.target || new THREE.Vector3(0, 0, 0);
+    const offset = this.camera.position.clone().sub(target);
+    const spherical = new THREE.Spherical().setFromVector3(offset);
+    return {
+      yaw: spherical.theta,
+      pitch: spherical.phi,
+      distance: spherical.radius,
+      target: { x: target.x, y: target.y, z: target.z },
+      fov: this.camera.fov
+    };
+  }
+
+  setCameraState(state) {
+    if (!this.camera || !state) return false;
+    const target = new THREE.Vector3(
+      Number(state.target?.x) || 0,
+      Number(state.target?.y) || 0,
+      Number(state.target?.z) || 0
+    );
+    const spherical = new THREE.Spherical(
+      Math.max(0.1, Number(state.distance) || 3.4),
+      Math.max(0.08, Math.min(Math.PI - 0.08, Number(state.pitch) || Math.PI * 0.48)),
+      Number(state.yaw) || 0
+    );
+    const offset = new THREE.Vector3().setFromSpherical(spherical);
+    this.camera.position.copy(target).add(offset);
+    this.camera.fov = Math.max(15, Math.min(100, Number(state.fov) || 60));
+    this.camera.updateProjectionMatrix();
+    this.controls?.target.copy(target);
+    this.camera.lookAt(target);
+    this.controls?.update();
+    return true;
+  }
+
+  resetView() {
+    if (this.initialCameraState) return this.setCameraState(this.initialCameraState);
+    this.radius = 3.4;
+    this.theta = 0;
+    this.phi = Math.PI * 0.48;
+    this.updateCamera();
+    return true;
+  }
+
   resize() {
     if (!this.renderer || !this.camera) return;
     const rect = this.host.getBoundingClientRect();
@@ -260,12 +369,19 @@ export class ParticleSystem {
       this.material.uniforms.uProgress.value=this.currentProgress;
       this.material.uniforms.uTime.value=now/1000;
     }
-    if (this.visible) this.renderer.render(this.scene,this.camera);
+
+    // KIRI-Maker pattern: OrbitControls stays alive every interactive frame.
+    if (this.visible) {
+      this.controls?.update();
+      this.renderer.render(this.scene,this.camera);
+    }
   }
   dispose() {
     if (this.raf) cancelAnimationFrame(this.raf);
     this.raf=0;
     this.points?.geometry?.dispose?.();
+    this.controls?.dispose?.();
+    this.controls = null;
     this.material?.dispose?.();
     this.renderer?.dispose?.();
     this.renderer?.domElement?.remove?.();
