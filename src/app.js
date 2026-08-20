@@ -30,6 +30,12 @@ let currentParticleSource = null;
 let sceneResolveController = null;
 let loadGeneration = 0;
 let activeBlobViewerUrl = null;
+let orbitSpeed = 1;
+let dollySpeed = 1;
+let gestureLock = 'full';
+let particleBudget = 300000;
+let presentationMode = false;
+let sharedCameraState = null;
 
 function notify(text) {
   toastEl.textContent = text;
@@ -204,7 +210,7 @@ async function prepareParticles(url,meta=null) {
   particleLoading=true; particleReady=false; currentParticleSource=url;
   setParticleStatus('粒子資料解碼中…');
   try {
-    const data=await loadParticleData(url,meta);
+    const data=await loadParticleData(url,meta,{ maxParticles: particleBudget });
     if (currentParticleSource!==url) return;
     const ps=await ensureParticleSystem();
     await ps.init(data);
@@ -226,13 +232,56 @@ function setParticleStatus(text,ok=false) {
   el.textContent=text;
   el.classList.toggle('ready',ok);
 }
+function captureCameraStateFromCurrentMode() {
+  if ((modeController?.mode || 'reality') === 'particle') {
+    return particleSystem?.getCameraState?.() || sharedCameraState;
+  }
+  return gsBridge?.getCameraState?.() || sharedCameraState;
+}
+
+function applySharedCameraToParticle() {
+  if (!particleSystem || !sharedCameraState) return;
+  particleSystem.setCameraState?.(sharedCameraState);
+}
+
+function syncParticleBackToReality() {
+  if (!particleSystem || !gsBridge) return;
+  const state = particleSystem.getCameraState?.();
+  if (state) {
+    sharedCameraState = state;
+    // Adapter retains the state so the next Reality gesture continues from
+    // the same logical yaw/pitch/distance even though the official Viewer
+    // does not expose a stable public CameraManager API to the parent page.
+    gsBridge.setCameraState?.(state);
+  }
+}
+
+function resetCurrentView() {
+  if ((modeController?.mode || 'reality') === 'particle') {
+    particleSystem?.resetView?.();
+    sharedCameraState = particleSystem?.getCameraState?.() || null;
+    notify('粒子鏡頭已重設');
+  } else {
+    gsBridge?.resetView?.();
+    sharedCameraState = gsBridge?.getCameraState?.() || null;
+    notify('實景鏡頭已重設');
+  }
+}
+
 function setRendererMode(next) {
-  if (next==='particle') {
+  if (next === 'particle') {
     if (!particleReady || !modeController) {
       notify('粒子資料尚未就緒');
       return false;
     }
-    return modeController.setMode('particle');
+    sharedCameraState = captureCameraStateFromCurrentMode();
+    const ok = modeController.setMode('particle');
+    if (ok) applySharedCameraToParticle();
+    return ok;
+  }
+
+  if (modeController?.mode === 'particle') {
+    syncParticleBackToReality();
   }
   modeController?.setMode('reality');
   frame.style.visibility='visible';
@@ -284,6 +333,71 @@ $('#btnAssemble').addEventListener('click',()=>{
   }
 });
 
+// Interaction UX
+const resetViewBtn = $('#resetView');
+const presentationToggle = $('#presentationToggle');
+const gestureLockSelect = $('#gestureLock');
+const orbitSpeedSlider = $('#orbitSpeed');
+const dollySpeedSlider = $('#dollySpeed');
+const smoothingSlider = $('#gestureSmoothing');
+const particleBudgetSelect = $('#particleBudget');
+
+function updateTuningUI() {
+  $('#orbitSpeedReadout').textContent = `${orbitSpeed.toFixed(2)}×`;
+  $('#dollySpeedReadout').textContent = `${dollySpeed.toFixed(2)}×`;
+  $('#smoothingReadout').textContent = `${Math.round(Number(smoothingSlider?.value || 60))}%`;
+  $('#gestureLockReadout').textContent = gestureLock.toUpperCase();
+  $('#hudMode').textContent = gestureLock.toUpperCase();
+}
+
+orbitSpeedSlider?.addEventListener('input', e => {
+  orbitSpeed = Number(e.target.value) || 1;
+  updateTuningUI();
+});
+dollySpeedSlider?.addEventListener('input', e => {
+  dollySpeed = Number(e.target.value) || 1;
+  updateTuningUI();
+});
+smoothingSlider?.addEventListener('input', e => {
+  const v = Math.max(0, Math.min(100, Number(e.target.value) || 0));
+  gesture.setSensitivity?.({ smoothing: v / 100 });
+  updateTuningUI();
+});
+gestureLockSelect?.addEventListener('change', e => {
+  gestureLock = e.target.value;
+  updateTuningUI();
+  notify(`手勢模式：${gestureLockSelect.options[gestureLockSelect.selectedIndex].text}`);
+});
+particleBudgetSelect?.addEventListener('change', e => {
+  particleBudget = Number(e.target.value) || 300000;
+  $('#particleBudgetNote').textContent = `下一次載入將使用 ${Math.round(particleBudget/1000)}K 粒子上限。`;
+});
+resetViewBtn?.addEventListener('click', resetCurrentView);
+$('.viewport')?.addEventListener('dblclick', event => {
+  if (event.target?.closest?.('button,input,select')) return;
+  resetCurrentView();
+});
+
+function setPresentation(enabled) {
+  presentationMode = !!enabled;
+  document.body.classList.toggle('presentation', presentationMode);
+  presentationToggle.textContent = presentationMode ? '離開簡報模式 (P)' : '簡報模式 (P)';
+  particleSystem?.resize?.();
+}
+presentationToggle?.addEventListener('click', () => setPresentation(!presentationMode));
+document.addEventListener('keydown', event => {
+  const tag = document.activeElement?.tagName?.toLowerCase();
+  if (['input','textarea','select'].includes(tag)) return;
+  if (event.key.toLowerCase() === 'p') {
+    event.preventDefault();
+    setPresentation(!presentationMode);
+  }
+  if (event.key === 'Escape' && presentationMode) setPresentation(false);
+  if (event.key.toLowerCase() === 'r') resetCurrentView();
+});
+
+updateTuningUI();
+
 // Gesture
 const gestureVideo=$('#gestureVideo');
 const gestureToggle=$('#gestureToggle');
@@ -291,7 +405,19 @@ const gestureState=$('#gestureState');
 const gestureLabel=$('#gestureLabel');
 const gestureModeNote=$('#gestureModeNote');
 const gesture=new GestureControl();
+gesture.setSensitivity?.({ smoothing: 0.60 });
 const gsBridge=new GSBridgeAdapter({frame,getRuntime:()=>active?.runtime||null});
+gsBridge.onResetRequest=()=>resetCurrentView();
+
+function prepareRealityTracking(attempt=0) {
+  const canvas = gsBridge.getCanvas?.();
+  if (canvas) {
+    gsBridge.prepareCanvas?.(canvas);
+    return;
+  }
+  if (attempt < 12) setTimeout(() => prepareRealityTracking(attempt + 1), 250);
+}
+
 let gestureRAF=0, gestureEnabled=false;
 
 function setGestureState(s,text) {
@@ -306,12 +432,41 @@ gesture.onStatusChange=(s,t)=>setGestureState(s,t);
 gesture.onGestureChange=(name)=>{
   gestureLabel.textContent=gesture.getGestureLabel();
 
-  if(name==='Pointing_Up' && (modeController?.mode||'reality')==='reality') gsBridge.beginOrbit();
+  if(name==='Pointing_Up' && gestureLock !== 'particle' && (modeController?.mode||'reality')==='reality') gsBridge.beginOrbit();
   else gsBridge.endOrbit();
 
 };
 
+gesture.onOpenPalmHold=()=>{
+  // The only automatic route into Particle Mode.
+  if (gestureLock !== 'camera' && particleReady && modeController?.mode !== 'particle') {
+    if (setRendererMode('particle')) {
+      particleSystem?.setTargetProgress(
+        Math.max(gesture.targetProgress || 0, 0.72)
+      );
+      notify('🤚 張手：切換粒子模式');
+    }
+  }
+};
+
+gesture.onThreeFingerHold=()=>{
+  // Assemble does not change Reality/Particle mode.
+  // It only gathers particles when Particle Mode is already active.
+  if (
+    gestureLock !== 'camera' &&
+    particleReady &&
+    modeController?.mode === 'particle'
+  ) {
+    gesture.targetProgress = 0;
+    particleSystem?.setTargetProgress(0);
+    $('#scatterReadout').textContent='0%';
+    $('#scatterSlider').value=0;
+    notify('🖖 三指：粒子聚合');
+  }
+};
+
 gesture.onModeToggle=()=>{
+  if (gestureLock !== 'full') return;
   const current = modeController?.mode || 'reality';
 
   if (current === 'particle') {
@@ -323,37 +478,50 @@ gesture.onModeToggle=()=>{
 };
 gesture.onRotationChange=(dx,dy)=>{
   gestureLabel.textContent=gesture.getGestureLabel();
-  if(modeController?.mode==='particle') particleSystem?.orbit(dx,dy);
-  else realityOrbit(dx,dy);
+  if (gestureLock === 'particle') return;
+  if(modeController?.mode==='particle') particleSystem?.orbit(dx * orbitSpeed,dy * orbitSpeed);
+  else realityOrbit(dx * orbitSpeed,dy * orbitSpeed);
 };
 gesture.onPinchChange=(pinching,dy)=>{
   gestureLabel.textContent=gesture.getGestureLabel();
   if(!pinching)return;
   gsBridge.endOrbit();
-  if(modeController?.mode==='particle') particleSystem?.dolly(dy);
-  else realityDolly(dy);
+  if (gestureLock === 'particle') return;
+  if(modeController?.mode==='particle') particleSystem?.dolly(dy * dollySpeed);
+  else realityDolly(dy * dollySpeed);
 };
 gesture.onScatterProgress=(progress)=>{
   const pct=Math.round(progress*100);
   $('#scatterReadout').textContent=`${pct}%`;
   $('#scatterSlider').value=pct;
 
-  // Only an actual Open Palm may auto-enter particle mode.
-  // Pointing and Pinch must remain camera-only gestures.
-  if (
-    particleReady &&
-    gesture.currentGesture === 'Open_Palm' &&
-    progress > 0.58 &&
-    modeController?.mode !== 'particle'
-  ) {
-    setRendererMode('particle');
-  }
-
-  // Gather/scatter affects the particle renderer only when it is already active.
-  if (particleReady && modeController?.mode === 'particle') {
+  // Scatter callback is data-only in V0.5.4.
+  // It cannot change Reality / Particle mode.
+  if (gestureLock !== 'camera' && particleReady && modeController?.mode === 'particle') {
     particleSystem?.setTargetProgress(progress);
   }
 };
+gesture.onTelemetry=(data)=>{
+  const labels = {
+    none:'等待手勢',
+    Pointing_Up:'☝ Orbit',
+    Pinch:'🤏 Dolly',
+    Open_Palm:'🤚 Scatter',
+    Three_Finger:'🖖 Assemble',
+    Victory:'✌ Toggle'
+  };
+  $('#hudGesture').textContent = labels[data.gesture] || data.gesture || '等待手勢';
+  $('#hudConfidence').textContent = `${Math.round((data.confidence || 0) * 100)}%`;
+  const hold =
+    data.gesture === 'Victory'
+      ? data.victoryHold
+      : data.gesture === 'Three_Finger'
+        ? data.threeFingerHold
+        : data.openPalmHold;
+  $('#hudHoldBar').style.width = `${Math.round((hold || 0) * 100)}%`;
+  $('#hudCamera').textContent = (modeController?.mode || 'reality').toUpperCase();
+};
+
 function gestureLoop(t) {
   gesture.detect(t);
   if(gestureEnabled) gestureRAF=requestAnimationFrame(gestureLoop);
@@ -375,6 +543,7 @@ gestureToggle.addEventListener('click',async()=>{
 });
 
 frame.addEventListener('load',()=>{
+  prepareRealityTracking();
   gestureModeNote.textContent=
     active?.runtime==='SUPER SPLAT 可控模式' || active?.runtime==='本站自架 VIEWER'
     ? '目前為本站可控 Runtime：☝️ Orbit、🤏 Pinch Dolly 可用；粒子解碼完成後 🤚/👊/✌️ 也可用。'

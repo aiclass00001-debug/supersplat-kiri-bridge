@@ -67,6 +67,27 @@ export class GestureControl {
     this.onPinchChange = null;      // (active, deltaY, normalizedPinch)
     this.onScatterProgress = null;  // 0 gathered -> 1 scattered
     this.onModeToggle = null;
+    this.onOpenPalmHold = null;
+    this.onThreeFingerHold = null;
+    this.onTelemetry = null;
+
+    // User-tunable gesture feel.
+    this.rotationSmoothing = 0.35;
+    this.filteredRotation = { x: 0, y: 0 };
+
+    // Camera gestures and particle-mode entry are intentionally isolated.
+    // Pinch / Pointing can never directly or indirectly enter Particle Mode.
+    this.lastCameraGestureAt = -Infinity;
+    this.openPalmSince = null;
+    this.openPalmTriggered = false;
+    this.openPalmHoldMs = 600;
+
+    // Assemble gesture: index + middle + ring extended, pinky folded.
+    // Thumb is intentionally ignored to reduce pose sensitivity.
+    this.threeFingerSince = null;
+    this.threeFingerTriggered = false;
+    this.threeFingerHoldMs = 450;
+    this.cameraGestureCooldownMs = 800;
 
     this.victorySince = null;
     this.victoryTriggered = false;
@@ -221,12 +242,87 @@ export class GestureControl {
       smoothedGesture = 'Pointing_Up';
     }
 
-    // V0.4: pinch overrides pointing / classifier gesture.
+    // Explicit three-finger Assemble gesture.
+    // This is landmark-driven and does not depend on MediaPipe's Closed_Fist class.
+    if (
+      landmarks &&
+      !this.pinchActive &&
+      this.isThreeFingerAssembleGesture(landmarks)
+    ) {
+      smoothedGesture = 'Three_Finger';
+    }
+
+    // Pinch always wins over every particle gesture.
+    // This prevents a partially folded hand from being interpreted as Assemble.
     if (this.pinchActive && landmarks) {
       smoothedGesture = 'Pinch';
     }
 
     this.updateStableGesture(smoothedGesture, confidence);
+
+    // Hard camera-gesture lock.
+    // Any Pinch/Pointing activity blocks Open-Palm mode entry for a cooldown period.
+    const cameraGestureNow =
+      this.pinchActive ||
+      smoothedGesture === 'Pinch' ||
+      smoothedGesture === 'Pointing_Up' ||
+      this.currentGesture === 'Pinch' ||
+      this.currentGesture === 'Pointing_Up';
+
+    if (cameraGestureNow) {
+      this.lastCameraGestureAt = performance.now();
+      this.openPalmSince = null;
+      this.openPalmTriggered = false;
+    }
+
+    // Dedicated Open-Palm intent path.
+    // It requires an explicit stabilized Open_Palm classification, a hold,
+    // and no recent camera gesture. Scatter progress itself has no authority
+    // to switch renderer mode.
+    const explicitOpenPalm =
+      !this.pinchActive &&
+      smoothedGesture === 'Open_Palm' &&
+      this.currentGesture === 'Open_Palm' &&
+      rawGesture === 'Open_Palm' &&
+      performance.now() - this.lastCameraGestureAt >= this.cameraGestureCooldownMs;
+
+    if (explicitOpenPalm) {
+      if (this.openPalmSince == null) this.openPalmSince = performance.now();
+
+      if (
+        !this.openPalmTriggered &&
+        performance.now() - this.openPalmSince >= this.openPalmHoldMs
+      ) {
+        this.openPalmTriggered = true;
+        this.onOpenPalmHold?.();
+      }
+    } else if (!cameraGestureNow) {
+      this.openPalmSince = null;
+      this.openPalmTriggered = false;
+    }
+
+    // Dedicated three-finger Assemble intent.
+    // Requires an explicit stabilized landmark gesture and no recent camera gesture.
+    const explicitThreeFinger =
+      !this.pinchActive &&
+      smoothedGesture === 'Three_Finger' &&
+      this.currentGesture === 'Three_Finger' &&
+      performance.now() - this.lastCameraGestureAt >= this.cameraGestureCooldownMs;
+
+    if (explicitThreeFinger) {
+      if (this.threeFingerSince == null) this.threeFingerSince = performance.now();
+
+      if (
+        !this.threeFingerTriggered &&
+        performance.now() - this.threeFingerSince >= this.threeFingerHoldMs
+      ) {
+        this.threeFingerTriggered = true;
+        this.onThreeFingerHold?.();
+      }
+    } else {
+      this.threeFingerSince = null;
+      this.threeFingerTriggered = false;
+    }
 
     // Hold Victory for ~0.7s to toggle once; release before toggling again.
     if (smoothedGesture === 'Victory' && confidence >= MIN_CONFIDENCE) {
@@ -265,7 +361,10 @@ export class GestureControl {
         if (this.lastHandPos && this.inRotationMode) {
           const dx = currentHandPos.x - this.lastHandPos.x;
           const dy = currentHandPos.y - this.lastHandPos.y;
-          this.onRotationChange?.(dx, dy);
+          const a = Math.max(0.05, Math.min(0.95, this.rotationSmoothing));
+          this.filteredRotation.x = this.filteredRotation.x * (1 - a) + dx * a;
+          this.filteredRotation.y = this.filteredRotation.y * (1 - a) + dy * a;
+          this.onRotationChange?.(this.filteredRotation.x, this.filteredRotation.y);
         }
 
         this.lastHandPos = currentHandPos;
@@ -273,41 +372,52 @@ export class GestureControl {
       } else {
         this.inRotationMode = false;
         this.lastHandPos = null;
+        this.filteredRotation.x = 0;
+        this.filteredRotation.y = 0;
       }
     }
 
-    // KIRI continuous openness mapping for particle scatter/gather.
-    if (landmarks) {
-      if (
-        this.currentGesture !== 'Victory' &&
-        this.currentGesture !== 'Pointing_Up' &&
-        this.currentGesture !== 'Pinch'
-      ) {
-        const openness = this.calculateHandOpenness(landmarks);
-        const filterWeight = 0.25;
-        this.targetProgress =
-          this.targetProgress * (1 - filterWeight) +
-          openness * filterWeight;
+    // Scatter progress is updated ONLY during an actual Open_Palm.
+    // Camera gestures, Three_Finger, Victory and "no hand" all HOLD the previous value.
+    // This prevents removing the hand from behaving like Assemble.
+    if (
+      landmarks &&
+      !this.pinchActive &&
+      this.currentGesture === 'Open_Palm' &&
+      smoothedGesture === 'Open_Palm'
+    ) {
+      const openness = this.calculateHandOpenness(landmarks);
+      const filterWeight = 0.25;
 
-        // Keep display feedback compatible with KIRI behavior.
-        let displayGesture = 'none';
-        if (this.targetProgress > 0.70) displayGesture = 'Open_Palm';
-        else if (this.targetProgress < 0.30) displayGesture = 'Closed_Fist';
-
-        if (
-          displayGesture !== 'none' &&
-          displayGesture !== this.currentGesture
-        ) {
-          this.currentGesture = displayGesture;
-          this.onGestureChange?.(displayGesture, confidence);
-        }
-      }
+      this.targetProgress =
+        this.targetProgress * (1 - filterWeight) +
+        openness * filterWeight;
 
       this.onScatterProgress?.(this.targetProgress);
-    } else if (this.currentGesture === 'none') {
-      this.targetProgress = 0;
-      this.onScatterProgress?.(0);
     }
+
+    const now = performance.now();
+    const openPalmHold = this.openPalmSince == null
+      ? 0
+      : Math.max(0, Math.min(1, (now - this.openPalmSince) / this.openPalmHoldMs));
+    const victoryHold = this.victorySince == null
+      ? 0
+      : Math.max(0, Math.min(1, (now - this.victorySince) / this.victoryHoldMs));
+    const threeFingerHold = this.threeFingerSince == null
+      ? 0
+      : Math.max(0, Math.min(1, (now - this.threeFingerSince) / this.threeFingerHoldMs));
+
+    this.onTelemetry?.({
+      gesture: this.currentGesture,
+      confidence: this.gestureConfidence || confidence || 0,
+      pinchActive: this.pinchActive,
+      pinchRatio: Number.isFinite(pinchRatio) ? pinchRatio : null,
+      scatterProgress: this.targetProgress,
+      openPalmHold,
+      victoryHold,
+      threeFingerHold,
+      running: this.isRunning
+    });
   }
 
   updateStableGesture(smoothedGesture, confidence) {
@@ -512,6 +622,31 @@ export class GestureControl {
     return dTipToMCP < dPipToMCP * 1.1;
   }
 
+  isThreeFingerAssembleGesture(landmarks) {
+    if (!landmarks || landmarks.length < 21) return false;
+
+    const indexExtended = this.isFingerExtended(landmarks, 8, 6, 5);
+    const middleExtended = this.isFingerExtended(landmarks, 12, 10, 9);
+    const ringExtended = this.isFingerExtended(landmarks, 16, 14, 13);
+    const pinkyFolded = this.isFingerFolded(landmarks, 20, 18, 17);
+
+    // Require the three raised fingertips to sit generally above their MCP joints.
+    // Thumb position is intentionally ignored.
+    const indexUp = landmarks[8].y < landmarks[5].y;
+    const middleUp = landmarks[12].y < landmarks[9].y;
+    const ringUp = landmarks[16].y < landmarks[13].y;
+
+    return (
+      indexExtended &&
+      middleExtended &&
+      ringExtended &&
+      pinkyFolded &&
+      indexUp &&
+      middleUp &&
+      ringUp
+    );
+  }
+
   isTwoFingersExtended(landmarks) {
     const indexExtended = this.isFingerExtended(landmarks, 8, 6, 5);
     const middleExtended = this.isFingerExtended(landmarks, 12, 10, 9);
@@ -538,13 +673,22 @@ export class GestureControl {
     );
   }
 
+  setSensitivity({ smoothing = null } = {}) {
+    if (smoothing != null) {
+      const s = Math.max(0, Math.min(1, Number(smoothing)));
+      // UI 0..1: higher means smoother, therefore lower response alpha.
+      this.rotationSmoothing = 0.75 - s * 0.60;
+      this.pinchFilterWeight = 0.48 - s * 0.34;
+    }
+  }
+
   getGestureLabel() {
     const labels = {
       none: '等待手勢…',
       Pointing_Up: '☝️ 食指：鏡頭環繞',
       Pinch: '🤏 Pinch：上下移動拉近 / 拉遠',
       Open_Palm: '🤚 張開手掌：粒子散開',
-      Closed_Fist: '👊 握拳：粒子聚合',
+      Three_Finger: '🖖 三指：粒子聚合',
       Victory: '✌️ 勝利手勢：模式切換',
     };
 
