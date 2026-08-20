@@ -1,3 +1,5 @@
+import { GestureControl } from './gestureControl.js';
+import { GSBridgeAdapter } from './gsBridgeAdapter.js';
 const TEST_SCENE = 'https://superspl.at/scene/11d081f5';
 
 const $ = s => document.querySelector(s);
@@ -62,6 +64,30 @@ function validateAsset(raw) {
   return u.toString();
 }
 
+
+function normalizeDirectAssetUrl(raw) {
+  const url = validateAsset(raw);
+
+  try {
+    const u = new URL(url);
+
+    // GitHub Release test repo:
+    // https://github.com/aiclass00001-debug/supersplat-kiri-bridge/releases/download/TAG/file.sog
+    //
+    // Convert to same-origin Netlify proxy:
+    // /github-release/TAG/file.sog
+    const releasePrefix =
+      '/aiclass00001-debug/supersplat-kiri-bridge/releases/download/';
+
+    if (u.hostname === 'github.com' && u.pathname.startsWith(releasePrefix)) {
+      const tail = u.pathname.slice(releasePrefix.length);
+      return new URL(`/github-release/${tail}`, location.origin).toString();
+    }
+  } catch (_) {}
+
+  return url;
+}
+
 function viewerOptions() {
   const q = new URLSearchParams();
   if ($('#noui').checked) q.set('noui','');
@@ -99,15 +125,23 @@ function loadPublished(value) {
 
 function loadDirect(value) {
   try {
-    const asset = validateAsset(value);
+    const asset = normalizeDirectAssetUrl(value);
     const q = viewerOptions();
+    q.set('settings', './settings.json');
     q.set('content', asset);
+    // V0.3.1: force WebGL during Direct Asset testing.
+    // This reduces browser/WebGPU variance and is also the path required later for WebXR.
+    q.set('webgl', '');
     const src = `./viewer.html?${q.toString()}`;
     const share = new URL(location.href);
     share.search = '';
     share.searchParams.set('asset', asset);
     activate(src, '本站自架 VIEWER', new URL(asset).pathname.split('/').pop(), share.toString());
-    assetInput.value = asset;
+    if (asset.includes('/github-release/')) {
+      notify('GitHub Release 已改走 Netlify 同網域代理');
+    } else {
+      assetInput.value = asset;
+    }
   } catch (e) { notify(e.message); setStatus('錯誤'); }
 }
 
@@ -141,3 +175,110 @@ if (params.get('asset')) {
   sceneInput.value = params.get('scene');
   loadPublished(params.get('scene'));
 }
+
+// ------------------------------------------------------------
+// V0.4 KIRI-derived Gesture -> SuperSplat Adapter
+// ------------------------------------------------------------
+const gestureVideo = document.querySelector('#gestureVideo');
+const gestureToggle = document.querySelector('#gestureToggle');
+const gestureState = document.querySelector('#gestureState');
+const gestureLabel = document.querySelector('#gestureLabel');
+const gestureModeNote = document.querySelector('#gestureModeNote');
+
+const gesture = new GestureControl();
+const gsBridge = new GSBridgeAdapter({
+  frame,
+  getRuntime: () => active?.runtime || null,
+});
+
+let gestureRAF = 0;
+let gestureEnabled = false;
+
+function setGestureState(state, text) {
+  gestureState.textContent = text;
+  gestureState.classList.toggle('active', state === 'active');
+  gestureState.classList.toggle('error', state === 'error');
+}
+
+gesture.onStatusChange = (state, text) => {
+  setGestureState(state, text);
+};
+
+gesture.onGestureChange = (name) => {
+  gestureLabel.textContent = gesture.getGestureLabel();
+
+  if (name === 'Pointing_Up') {
+    if (gsBridge.isLocalRuntime()) gsBridge.beginOrbit();
+  } else {
+    gsBridge.endOrbit();
+  }
+};
+
+gesture.onRotationChange = (dx, dy) => {
+  gestureLabel.textContent = gesture.getGestureLabel();
+
+  if (!gsBridge.orbit(dx, dy)) {
+    gestureModeNote.classList.add('attention');
+  }
+};
+
+// V0.4 official zoom interaction:
+// 🤏 Pinch + vertical hand movement -> Dolly
+gesture.onPinchChange = (pinching, deltaY) => {
+  gestureLabel.textContent = gesture.getGestureLabel();
+
+  if (!pinching) return;
+
+  gsBridge.endOrbit();
+
+  if (!gsBridge.dollyFromPinch(deltaY)) {
+    gestureModeNote.classList.add('attention');
+  }
+};
+
+// KIRI continuous openness is kept now so the particle layer can connect
+// without changing the gesture recognizer again.
+gesture.onScatterProgress = (progress) => {
+  gsBridge.setScatterProgress(progress);
+
+  const percent = Math.round(progress * 100);
+  const scatterReadout = document.querySelector('#scatterReadout');
+  if (scatterReadout) scatterReadout.textContent = `${percent}%`;
+};
+
+function gestureLoop(timestamp) {
+  gesture.detect(timestamp);
+
+  if (gestureEnabled) {
+    gestureRAF = requestAnimationFrame(gestureLoop);
+  }
+}
+
+gestureToggle?.addEventListener('click', async () => {
+  if (!gestureEnabled) {
+    const ok = await gesture.init(gestureVideo);
+    if (!ok) return;
+
+    gestureEnabled = true;
+    gestureToggle.textContent = '關閉 WEBCAM 手勢';
+    gestureRAF = requestAnimationFrame(gestureLoop);
+  } else {
+    gestureEnabled = false;
+    cancelAnimationFrame(gestureRAF);
+
+    gsBridge.destroy();
+    gesture.destroy();
+
+    setGestureState('idle', '未啟用');
+    gestureLabel.textContent = '等待啟用…';
+    gestureToggle.textContent = '啟用 WEBCAM 手勢';
+  }
+});
+
+frame.addEventListener('load', () => {
+  const local = gsBridge.isLocalRuntime();
+
+  gestureModeNote.textContent = local
+    ? '直接資產 / 自架 Viewer：☝️ 食指環繞、🤏 Pinch + 上下移動 Dolly 已可送入 Viewer。'
+    : 'SuperSplat 公開 Scene 目前仍是官方跨網域 Viewer；手勢可辨識，但 Camera / Particle 需先解析成本站可控制 Runtime。';
+});
