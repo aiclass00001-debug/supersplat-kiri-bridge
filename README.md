@@ -1,4 +1,4 @@
-# GS Bridge V0.2.2 中文版 — SuperSplat × KIRI
+# GS Bridge V0.3.1 Direct Asset 修正版 — SuperSplat × KIRI
 
 ## 結論
 這版是可部署到 Netlify 的 **V0.2 架構版**。
@@ -75,3 +75,36 @@ This is the correct structure for the self-hosted viewer.
 - Direct `.sog` 自架 Viewer 實測
 - KIRI Camera Path
 - KIRI Particle / Scatter
+
+
+## V0.3 Webcam 手勢控制
+
+新增：
+- MediaPipe Gesture Recognizer
+- Webcam 320×240 / 15 FPS ideal
+- 食指追蹤 → Camera Orbit
+- 雙拳距離 → Camera Dolly / Zoom
+- 手勢穩定判定、歷史投票與 dead-zone
+- 中文手勢狀態 UI
+
+### 很重要：Published Scene vs Direct Asset
+
+`https://superspl.at/scene/<id>` 會載入 `superspl.at` 官方 hosted viewer。
+因為它是跨網域 iframe，父網站不能直接存取裡面的 Canvas / Camera。
+
+所以：
+- Published Scene：Webcam 可辨識，但目前不能控制 Camera。
+- Direct Asset：使用本站 self-hosted SuperSplat Viewer，可以將手勢轉成 Pointer/Wheel 輸入來控制 Camera。
+
+V0.3 的 Camera bridge 採用 same-origin Canvas input injection，先驗證互動鏈路；
+後續若需要更精確的 cinematic camera control，建議改成直接暴露 Viewer / CameraManager API。
+
+
+## V0.3.1 修正
+Direct Asset 白畫面修正：
+- 補上官方 Viewer 預設要求的 `settings.json`
+- Direct Asset 明確傳入 `settings=./settings.json`
+- Direct Asset 測試階段強制 `webgl`，降低 WebGPU / iframe 差異
+- 背景改為近黑色，方便區分 runtime 正常但 asset 載入失敗的狀態
+
+官方 SuperSplat Viewer 的 URL 參數規格中，`settings` 預設為 `./settings.json`。
