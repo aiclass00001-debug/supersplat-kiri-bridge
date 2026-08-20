@@ -1,6 +1,6 @@
 {
-  "name": "supersplat-kiri-bridge-v02",
-  "version": "0.2.0",
+  "name": "supersplat-kiri-bridge",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -10,6 +10,6 @@
     "@playcanvas/supersplat-viewer": "^1.28.0"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   }
 }
