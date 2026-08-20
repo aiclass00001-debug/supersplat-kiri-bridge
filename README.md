@@ -1,15 +1,32 @@
-# GS Bridge V0.5.3
+# GS Bridge V0.6.1 — Three-Finger Assemble
 
-## 修正
-- Pointing / Pinch 不再誤切粒子。
-- Open Palm 才會自動切粒子。
-- Closed Fist 只在粒子模式 Assemble。
-- Victory 長按 0.7 秒切換 Reality / Particle。
-- Webcam 開啟後保留真實 mouse/touch pointer capture。
-- 粒子 Points 跟 KIRI-Maker 一樣做 `rotation.x = Math.PI`。
-- 粒子縮放改成 KIRI-style origin + p90 radius。
-- Scene Resolver 支援 Streamed SOG / SOG / verified legacy PLY。
-- 平行 probe、12 秒 timeout、切換場景 abort 前一個載入。
-- 大型場景 viewer budget=2。
+## 手勢配置
+
+- ☝️ Pointing → Orbit
+- 🤏 Pinch → Dolly
+- 🤚 Open Palm → Scatter
+- 🖖 Three Finger (Index + Middle + Ring extended, Pinky folded) → Assemble
+- ✌️ Victory hold → Reality / Particle Toggle
+
+## 本版修正
+
+1. **Closed Fist 完全移出操作邏輯**
+   - 避免和 Pinch 的半握姿勢互相誤判。
+
+2. **Three_Finger Assemble**
+   - landmark-driven，不依賴 MediaPipe 內建 Closed_Fist。
+   - 食指、中指、無名指伸直。
+   - 小指收起。
+   - 拇指忽略，降低姿勢要求。
+   - 穩定約 450ms 後觸發一次 Assemble。
+
+3. **手移出畫面 = HOLD**
+   - no hand / gesture none 不再把 scatter progress 設成 0。
+   - 張手散開後，把手拿走，粒子保持目前位置。
+   - 只有 🖖 三指或 UI「聚合」才會 Assemble。
+
+4. **Particle gesture 與 Camera gesture 保持隔離**
+   - Pinch 優先級最高。
+   - Three Finger / Open Palm 都受 Camera gesture cooldown 保護。
 
 KIRI-Maker by Willjim, MIT License.

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#07090d">
-  <title>GS Bridge V0.5.3 — SuperSplat × KIRI</title>
+  <title>GS Bridge V0.6.1 — SuperSplat × KIRI</title>
   <meta name="description" content="Self-hosted SuperSplat Viewer bridge, prepared for KIRI-style cinematic and particle workflows.">
   <link rel="stylesheet" href="./styles.css">
 </head>
@@ -14,7 +14,7 @@
     <div class="brand">
       <div class="logo">GS</div>
       <div>
-        <h1>GS Bridge <span>V0.5.3</span></h1>
+        <h1>GS Bridge <span>V0.6.1</span></h1>
         <p>SuperSplat 執行環境 × KIRI 電影運鏡橋接</p>
       </div>
     </div>
@@ -121,13 +121,45 @@
             <div><b>☝️ 食指</b><span>鏡頭環繞</span></div>
             <div><b>🤏 Pinch</b><span>上下移動 Dolly</span></div>
             <div><b>🤚 張手</b><span>自動粒子散開</span></div>
-            <div><b>👊 握拳</b><span>粒子聚合</span></div>
+            <div><b>🖖 三指</b><span>粒子聚合（食指＋中指＋無名指）</span></div>
             <div><b>✌️ Victory</b><span>實景 / 粒子切換</span></div>
           </div>
 
           <p id="gestureModeNote" class="warning-note">
-            V0.5.3：☝️ / 🤏 只控制鏡頭；🤚 才切粒子；✌️ 長按 0.7 秒切換。Webcam 開著仍可用滑鼠。
+            V0.6.1：取消握拳；🖖 三指聚合。手離開 Webcam 時保持目前粒子狀態，不再自動聚合。
           </p>
+        </div>
+      </section>
+
+
+      <section id="interactionSection">
+        <div class="eyebrow">06 / 操作體驗</div>
+        <div class="bridge-card">
+          <div class="bridge-title"><span>手勢模式鎖</span><b id="gestureLockReadout">FULL</b></div>
+          <select id="gestureLock">
+            <option value="full" selected>Full — Camera + Particle</option>
+            <option value="camera">Camera Only</option>
+            <option value="particle">Particle Only</option>
+          </select>
+
+          <div class="tuning-grid">
+            <label>Orbit Speed <b id="orbitSpeedReadout">1.00×</b><input id="orbitSpeed" type="range" min="0.35" max="2.20" step="0.05" value="1"></label>
+            <label>Dolly Speed <b id="dollySpeedReadout">1.00×</b><input id="dollySpeed" type="range" min="0.35" max="2.20" step="0.05" value="1"></label>
+            <label>Gesture Smoothing <b id="smoothingReadout">60%</b><input id="gestureSmoothing" type="range" min="0" max="100" step="5" value="60"></label>
+          </div>
+
+          <label for="particleBudget">大型場景粒子品質</label>
+          <select id="particleBudget">
+            <option value="150000">效能 · 150K</option>
+            <option value="300000" selected>平衡 · 300K</option>
+            <option value="600000">高品質 · 600K</option>
+            <option value="1000000">極高 · 1M</option>
+          </select>
+          <p id="particleBudgetNote" class="help">下一次載入場景時套用。</p>
+        </div>
+        <div class="grid2">
+          <button id="resetView">重設鏡頭</button>
+          <button id="presentationToggle">簡報模式 (P)</button>
         </div>
       </section>
 
@@ -161,6 +193,13 @@ WebXR / 影片輸出</pre>
         allow="fullscreen; xr-spatial-tracking"
         allowfullscreen></iframe>
 
+
+      <div class="gesture-hud" id="gestureHud">
+        <div class="hud-top"><b id="hudGesture">手勢未啟用</b><span id="hudConfidence">0%</span></div>
+        <div class="hud-track"><i id="hudHoldBar"></i></div>
+        <div class="hud-meta"><span id="hudMode">FULL</span><span id="hudCamera">REALITY</span></div>
+      </div>
+
       <div class="overlay" id="overlay">
         <span id="runtimeLabel">尚未載入</span>
         <span id="sourceLabel">—</span>
@@ -169,7 +208,7 @@ WebXR / 影片輸出</pre>
   </main>
 
   <footer>
-    <span>V0.5.3</span><span>官方 @playcanvas/supersplat-viewer 執行環境</span>
+    <span>V0.6.1</span><span>官方 @playcanvas/supersplat-viewer 執行環境</span>
     <span class="spacer"></span><span id="footerMode">就緒</span>
   </footer>
 </div>
