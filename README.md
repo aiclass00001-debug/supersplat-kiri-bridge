@@ -1,77 +1,57 @@
-# GS Bridge V0.2.2 中文版 — SuperSplat × KIRI
+# GS Bridge V0.4 — KIRI-Fork Integration
 
-## 結論
-這版是可部署到 Netlify 的 **V0.2 架構版**。
+## 本版結論
 
-它有兩條載入路徑：
+V0.4 不再重新設計手勢辨識，而改為沿用 KIRI-Maker 的核心互動架構：
 
-1. **SuperSplat Published Scene**
-   - 輸入 `https://superspl.at/scene/<id>`
-   - 使用 SuperSplat hosted runtime 播放。
-   - 這條路徑不嘗試逆向或抓取 SuperSplat 私有 CDN / scene API。
+- MediaPipe Tasks Vision 0.10.18
+- 0.62 confidence threshold
+- 8-frame history voting
+- 8-frame stable transition
+- Pointing_Up landmark tracking
+- Continuous hand openness 0–1
+- Open Palm / Closed Fist particle progress
 
-2. **Direct Asset / Self-hosted Viewer**
-   - 輸入你自己可公開存取的 `.sog`, `.lod-meta.json`, `.meta.json`, `.ply`, `.compressed.ply`
-   - 由 Netlify build 時安裝官方 `@playcanvas/supersplat-viewer`
-   - 產生 `dist/viewer.html`
-   - 由你自己的 Netlify domain 同站執行 Viewer。
+### GS Bridge 修改
 
-這使 Direct Asset 模式擺脫 cross-origin viewer iframe 限制，適合作為下一階段 KIRI Camera / FX / Export Bridge 的基礎。
+- 移除 KIRI 原本的雙拳 Zoom。
+- 新增單手 `Pinch`：
+  - Thumb tip = landmark 4
+  - Index tip = landmark 8
+  - Pinch distance 以 palm length 正規化。
+  - Pinch 有 hysteresis，避免臨界值反覆跳動。
+  - Pinch 後使用 landmark 9 的上下移動控制 Dolly。
+- Viewer-specific 操作移到 `gsBridgeAdapter.js`，避免把 SuperSplat 邏輯塞進 GestureControl。
 
-## Netlify Deploy
+## 目前可測
 
-### 方法 A：GitHub → Netlify（推薦）
-把整個資料夾推到 GitHub，Netlify Import repository。
+### Direct Asset / Self-host Viewer
+- ☝️ 食指：Orbit
+- 🤏 Pinch + 上下：Dolly / Zoom
+- 🤚 / 👊：已輸出 KIRI-style 0–1 scatter progress，UI 可看到百分比
 
-Netlify 會讀取 `netlify.toml`：
+### Published superspl.at Scene
+目前仍屬跨網域 hosted viewer，只能顯示與做手勢辨識。
+要做到 Scene URL → Camera + Particle，需要下一步 Scene Resolver / self-host runtime。
 
-- Build command: `npm run build`
+## Particle 狀態
+
+本版**沒有假裝已完成 SOG 粒子解碼**。
+KIRI-Maker 的 ParticleSystem 是 THREE.Points + ShaderMaterial，輸入需要 positions / colors。
+V0.4 已把 Gesture 的 scatter progress 完整保留，下一階段只需將 SuperSplat/SOG 的 Gaussian
+centers/colors 暴露給 Particle Renderer，即可接 KIRI ParticleSystem。
+
+## Attribution
+
+KIRI-Maker by Willjim:
+https://github.com/willjim/KIRI-Maker
+
+KIRI-Maker is MIT licensed. See:
+- `KIRI-MAKER-LICENSE`
+- `THIRD_PARTY_NOTICES.md`
+
+## Netlify
+
+- Build: `npm run build`
 - Publish: `dist`
-- Node: 20
-
-### 方法 B：Netlify CLI
-```bash
-npm install
-npm run build
-npx netlify deploy --prod --dir=dist
-```
-
-> 這版不建議直接使用 Netlify Drop 上傳原始資料夾，因為 Viewer npm package 需要先 build。
-> 若要 Drag & Drop，請先本機執行 `npm install && npm run build`，然後拖 `dist/`。
-
-## Direct Asset 注意事項
-遠端 `.sog` / `.lod-meta.json` 必須允許瀏覽器 CORS。
-最穩定的方法是把 Gaussian Splat assets 一起放在 Netlify / R2 / S3 等你可控制的來源。
-
-## V0.3 建議
-- 直接 fork / 整合 KIRI-Maker UI
-- Viewer Camera bridge
-- 16 組 cinematic camera paths
-- KIRI particle/scatter layer
-- MediaRecorder / WebCodecs export
-- Mobile / Quest Gaussian budget preset
-- Optional WebXR launch button
-
-## Why not scrape `/scene/<id>`?
-SuperSplat 的 hosted Studio / Manage / Explore / Scene page 與 publish/scene API 屬於 hosted proprietary platform；官方 open-source 的部分是 Editor、Viewer、splat-transform 等。公開場景用 hosted runtime 最穩；要自行操作 Gaussian data，建議使用自有 SOG / Streamed SOG asset。
-
-
-## V0.2.1 Fix
-V0.2 incorrectly injected the npm-exported CSS/JS into the viewer HTML while the official HTML still referenced `./index.css` and `./index.js`.
-
-V0.2.1 follows the official npm package contract exactly:
-
-- `viewer.html` = exported `html`
-- `index.css` = exported `css`
-- `index.js` = exported `js`
-
-This is the correct structure for the self-hosted viewer.
-
-
-## V0.2.2 中文化
-本版只進行 UI 與提示文字中文化，不新增新功能。
-
-下一階段預定：
-- Direct `.sog` 自架 Viewer 實測
-- KIRI Camera Path
-- KIRI Particle / Scatter
+- Node 20
