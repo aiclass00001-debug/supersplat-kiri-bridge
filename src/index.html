@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#07090d">
+  <title>GS Bridge V0.2 — SuperSplat × KIRI</title>
+  <meta name="description" content="Self-hosted SuperSplat Viewer bridge, prepared for KIRI-style cinematic and particle workflows.">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">GS</div>
+      <div>
+        <h1>GS Bridge <span>V0.2</span></h1>
+        <p>SuperSplat runtime × KIRI cinematic bridge</p>
+      </div>
+    </div>
+    <div class="status"><i></i><span id="status">READY</span></div>
+  </header>
+
+  <main>
+    <aside class="sidebar">
+      <section>
+        <div class="eyebrow">01 / SOURCE MODE</div>
+        <div class="tabs" role="tablist">
+          <button class="tab active" data-mode="scene">SUPER SPLAT SCENE</button>
+          <button class="tab" data-mode="asset">DIRECT ASSET</button>
+        </div>
+      </section>
+
+      <section id="scenePane">
+        <label>Published SuperSplat scene</label>
+        <input id="sceneInput" placeholder="https://superspl.at/scene/11d081f5">
+        <p class="help">Public scene links are opened through the hosted runtime because SuperSplat's publish/scene API is a hosted service.</p>
+        <button class="primary full" id="loadScene">LOAD PUBLISHED SCENE</button>
+      </section>
+
+      <section id="assetPane" class="hidden">
+        <label>Self-hosted / public splat asset URL</label>
+        <input id="assetInput" placeholder="https://your-cdn/model.sog">
+        <div class="chips">
+          <span>.sog</span><span>.lod-meta.json</span><span>.meta.json</span>
+          <span>.ply</span><span>.compressed.ply</span>
+        </div>
+        <p class="help">This mode uses the locally built official SuperSplat Viewer. The asset server must allow browser CORS access.</p>
+        <button class="primary full" id="loadAsset">LOAD IN LOCAL VIEWER</button>
+      </section>
+
+      <section>
+        <div class="eyebrow">02 / VIEWER OPTIONS</div>
+        <label class="check"><input id="noui" type="checkbox"> Hide viewer UI</label>
+        <label class="check"><input id="ministats" type="checkbox"> Mini performance stats</label>
+        <label class="check"><input id="noanim" type="checkbox"> Start animation paused</label>
+      </section>
+
+      <section>
+        <div class="eyebrow">03 / KIRI BRIDGE</div>
+        <div class="bridge-card">
+          <div class="bridge-title"><span>Renderer Bridge</span><b>PREPARED</b></div>
+          <p>V0.2 keeps the runtime same-origin for direct assets, so the next step can attach camera-path, particle and export controls without cross-origin iframe restrictions.</p>
+        </div>
+        <div class="grid2">
+          <button id="fullscreen" disabled>FULLSCREEN</button>
+          <button id="copyLink" disabled>COPY LINK</button>
+        </div>
+      </section>
+
+      <section class="technical">
+        <div class="eyebrow">SUPPORTED PIPELINE</div>
+        <pre>SuperSplat / KIRI / LCC
+        ↓
+SOG / Streamed SOG
+        ↓
+Self-hosted Viewer
+        ↓
+KIRI Camera + FX Bridge
+        ↓
+WebXR / Video Export</pre>
+      </section>
+    </aside>
+
+    <section class="viewport">
+      <div class="placeholder" id="placeholder">
+        <div class="scanlines"></div>
+        <div class="hero">
+          <span class="badge">SELF-HOSTED RUNTIME READY</span>
+          <h2>SuperSplat<br><em>× KIRI</em></h2>
+          <p>Load a published scene, or point the local viewer at your own SOG / Streamed SOG asset.</p>
+          <button class="primary" id="demo">LOAD TEST SCENE</button>
+        </div>
+      </div>
+
+      <iframe id="viewer"
+        title="Gaussian Splat Viewer"
+        allow="fullscreen; xr-spatial-tracking"
+        allowfullscreen></iframe>
+
+      <div class="overlay" id="overlay">
+        <span id="runtimeLabel">NO RUNTIME</span>
+        <span id="sourceLabel">—</span>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span>V0.2</span><span>Official @playcanvas/supersplat-viewer runtime</span>
+    <span class="spacer"></span><span id="footerMode">READY</span>
+  </footer>
+</div>
+
+<div id="toast"></div>
+<script type="module" src="./app.js"></script>
+</body>
+</html>
