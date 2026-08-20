@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#07090d">
-  <title>GS Bridge V0.2 — SuperSplat × KIRI</title>
+  <title>GS Bridge V0.2.2 — SuperSplat × KIRI</title>
   <meta name="description" content="Self-hosted SuperSplat Viewer bridge, prepared for KIRI-style cinematic and particle workflows.">
   <link rel="stylesheet" href="./styles.css">
 </head>
@@ -15,70 +15,70 @@
       <div class="logo">GS</div>
       <div>
         <h1>GS Bridge <span>V0.2</span></h1>
-        <p>SuperSplat runtime × KIRI cinematic bridge</p>
+        <p>SuperSplat 執行環境 × KIRI 電影運鏡橋接</p>
       </div>
     </div>
-    <div class="status"><i></i><span id="status">READY</span></div>
+    <div class="status"><i></i><span id="status">就緒</span></div>
   </header>
 
   <main>
     <aside class="sidebar">
       <section>
-        <div class="eyebrow">01 / SOURCE MODE</div>
+        <div class="eyebrow">01 / 來源模式</div>
         <div class="tabs" role="tablist">
-          <button class="tab active" data-mode="scene">SUPER SPLAT SCENE</button>
-          <button class="tab" data-mode="asset">DIRECT ASSET</button>
+          <button class="tab active" data-mode="scene">SUPER SPLAT 場景</button>
+          <button class="tab" data-mode="asset">直接資產</button>
         </div>
       </section>
 
       <section id="scenePane">
-        <label>Published SuperSplat scene</label>
+        <label>已發布的 SuperSplat 場景</label>
         <input id="sceneInput" placeholder="https://superspl.at/scene/11d081f5">
-        <p class="help">Public scene links are opened through the hosted runtime because SuperSplat's publish/scene API is a hosted service.</p>
-        <button class="primary full" id="loadScene">LOAD PUBLISHED SCENE</button>
+        <p class="help">公開場景連結會透過 SuperSplat 官方託管 Viewer 開啟。</p>
+        <button class="primary full" id="loadScene">載入已發布場景</button>
       </section>
 
       <section id="assetPane" class="hidden">
-        <label>Self-hosted / public splat asset URL</label>
+        <label>自架 / 公開 Splat 資產網址</label>
         <input id="assetInput" placeholder="https://your-cdn/model.sog">
         <div class="chips">
           <span>.sog</span><span>.lod-meta.json</span><span>.meta.json</span>
           <span>.ply</span><span>.compressed.ply</span>
         </div>
-        <p class="help">This mode uses the locally built official SuperSplat Viewer. The asset server must allow browser CORS access.</p>
-        <button class="primary full" id="loadAsset">LOAD IN LOCAL VIEWER</button>
+        <p class="help">此模式使用本站自架的官方 SuperSplat Viewer。資產來源伺服器必須允許瀏覽器 CORS 存取。</p>
+        <button class="primary full" id="loadAsset">使用本站 Viewer 載入</button>
       </section>
 
       <section>
-        <div class="eyebrow">02 / VIEWER OPTIONS</div>
-        <label class="check"><input id="noui" type="checkbox"> Hide viewer UI</label>
-        <label class="check"><input id="ministats" type="checkbox"> Mini performance stats</label>
-        <label class="check"><input id="noanim" type="checkbox"> Start animation paused</label>
+        <div class="eyebrow">02 / Viewer 選項</div>
+        <label class="check"><input id="noui" type="checkbox"> 隱藏 Viewer 介面</label>
+        <label class="check"><input id="ministats" type="checkbox"> 顯示迷你效能資訊</label>
+        <label class="check"><input id="noanim" type="checkbox"> 動畫載入後先暫停</label>
       </section>
 
       <section>
-        <div class="eyebrow">03 / KIRI BRIDGE</div>
+        <div class="eyebrow">03 / KIRI 橋接</div>
         <div class="bridge-card">
-          <div class="bridge-title"><span>Renderer Bridge</span><b>PREPARED</b></div>
-          <p>V0.2 keeps the runtime same-origin for direct assets, so the next step can attach camera-path, particle and export controls without cross-origin iframe restrictions.</p>
+          <div class="bridge-title"><span>渲染器橋接</span><b>已預留</b></div>
+          <p>直接資產模式已預留同網域 Runtime 架構，下一階段可接 Camera Path、粒子效果與輸出功能。</p>
         </div>
         <div class="grid2">
-          <button id="fullscreen" disabled>FULLSCREEN</button>
-          <button id="copyLink" disabled>COPY LINK</button>
+          <button id="fullscreen" disabled>全螢幕</button>
+          <button id="copyLink" disabled>複製連結</button>
         </div>
       </section>
 
       <section class="technical">
-        <div class="eyebrow">SUPPORTED PIPELINE</div>
+        <div class="eyebrow">支援流程</div>
         <pre>SuperSplat / KIRI / LCC
         ↓
 SOG / Streamed SOG
         ↓
-Self-hosted Viewer
+自架 Viewer
         ↓
-KIRI Camera + FX Bridge
+KIRI Camera + 特效橋接
         ↓
-WebXR / Video Export</pre>
+WebXR / 影片輸出</pre>
       </section>
     </aside>
 
@@ -86,10 +86,10 @@ WebXR / Video Export</pre>
       <div class="placeholder" id="placeholder">
         <div class="scanlines"></div>
         <div class="hero">
-          <span class="badge">SELF-HOSTED RUNTIME READY</span>
+          <span class="badge">自架執行環境已就緒</span>
           <h2>SuperSplat<br><em>× KIRI</em></h2>
-          <p>Load a published scene, or point the local viewer at your own SOG / Streamed SOG asset.</p>
-          <button class="primary" id="demo">LOAD TEST SCENE</button>
+          <p>可載入 SuperSplat 公開場景，或使用自己的 SOG / Streamed SOG 資產。</p>
+          <button class="primary" id="demo">載入測試場景</button>
         </div>
       </div>
 
@@ -99,15 +99,15 @@ WebXR / Video Export</pre>
         allowfullscreen></iframe>
 
       <div class="overlay" id="overlay">
-        <span id="runtimeLabel">NO RUNTIME</span>
+        <span id="runtimeLabel">尚未載入</span>
         <span id="sourceLabel">—</span>
       </div>
     </section>
   </main>
 
   <footer>
-    <span>V0.2</span><span>Official @playcanvas/supersplat-viewer runtime</span>
-    <span class="spacer"></span><span id="footerMode">READY</span>
+    <span>V0.2</span><span>官方 @playcanvas/supersplat-viewer 執行環境</span>
+    <span class="spacer"></span><span id="footerMode">就緒</span>
   </footer>
 </div>
 

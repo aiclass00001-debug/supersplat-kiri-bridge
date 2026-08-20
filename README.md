@@ -1,4 +1,4 @@
-# GS Bridge V0.2.1 — SuperSplat × KIRI
+# GS Bridge V0.2.2 中文版 — SuperSplat × KIRI
 
 ## 結論
 這版是可部署到 Netlify 的 **V0.2 架構版**。
@@ -66,3 +66,12 @@ V0.2.1 follows the official npm package contract exactly:
 - `index.js` = exported `js`
 
 This is the correct structure for the self-hosted viewer.
+
+
+## V0.2.2 中文化
+本版只進行 UI 與提示文字中文化，不新增新功能。
+
+下一階段預定：
+- Direct `.sog` 自架 Viewer 實測
+- KIRI Camera Path
+- KIRI Particle / Scatter

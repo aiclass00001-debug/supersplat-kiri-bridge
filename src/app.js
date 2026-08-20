@@ -43,22 +43,22 @@ function sceneId(raw) {
   const text = String(raw || '').trim();
   if (/^[A-Za-z0-9_-]{4,100}$/.test(text)) return text;
   let u;
-  try { u = new URL(text); } catch { throw new Error('Scene URL 無效'); }
-  if (u.hostname.replace(/^www\./,'') !== 'superspl.at') throw new Error('不是 superspl.at 網址');
+  try { u = new URL(text); } catch { throw new Error('場景網址無效'); }
+  if (u.hostname.replace(/^www\./,'') !== 'superspl.at') throw new Error('這不是 superspl.at 網址');
   const m = u.pathname.match(/^\/scene\/([A-Za-z0-9_-]{4,100})/);
   if (m) return m[1];
   if (u.pathname === '/s' && u.searchParams.get('id')) return u.searchParams.get('id');
-  throw new Error('找不到 Scene ID');
+  throw new Error('找不到場景 ID');
 }
 
 function validateAsset(raw) {
   let u;
-  try { u = new URL(String(raw || '').trim()); } catch { throw new Error('Asset URL 無效'); }
-  if (!/^https?:$/.test(u.protocol)) throw new Error('只支援 http/https');
+  try { u = new URL(String(raw || '').trim()); } catch { throw new Error('資產網址無效'); }
+  if (!/^https?:$/.test(u.protocol)) throw new Error('目前只支援 http / https 網址');
   const p = u.pathname.toLowerCase();
   const supported = p.endsWith('.sog') || p.endsWith('.lod-meta.json') ||
     p.endsWith('.meta.json') || p.endsWith('.ply') || p.endsWith('.compressed.ply');
-  if (!supported) throw new Error('格式需為 SOG / LOD JSON / PLY');
+  if (!supported) throw new Error('格式需為 SOG、LOD JSON 或 PLY');
   return u.toString();
 }
 
@@ -72,7 +72,7 @@ function viewerOptions() {
 
 function activate(src, runtime, label, share) {
   active = { src, runtime, label, share };
-  setStatus('LOADING');
+  setStatus('載入中');
   placeholder.classList.add('hidden');
   frame.classList.add('active');
   frame.src = src;
@@ -92,9 +92,9 @@ function loadPublished(value) {
     const share = new URL(location.href);
     share.search = '';
     share.searchParams.set('scene', id);
-    activate(src, 'HOSTED SUPER SPLAT', `scene/${id}`, share.toString());
+    activate(src, 'SUPER SPLAT 官方託管', `scene/${id}`, share.toString());
     sceneInput.value = `https://superspl.at/scene/${id}`;
-  } catch (e) { notify(e.message); setStatus('ERROR'); }
+  } catch (e) { notify(e.message); setStatus('錯誤'); }
 }
 
 function loadDirect(value) {
@@ -106,9 +106,9 @@ function loadDirect(value) {
     const share = new URL(location.href);
     share.search = '';
     share.searchParams.set('asset', asset);
-    activate(src, 'LOCAL VIEWER', new URL(asset).pathname.split('/').pop(), share.toString());
+    activate(src, '本站自架 VIEWER', new URL(asset).pathname.split('/').pop(), share.toString());
     assetInput.value = asset;
-  } catch (e) { notify(e.message); setStatus('ERROR'); }
+  } catch (e) { notify(e.message); setStatus('錯誤'); }
 }
 
 tabs.forEach(t => t.addEventListener('click', () => setMode(t.dataset.mode)));
@@ -118,7 +118,7 @@ $('#demo').addEventListener('click', () => { setMode('scene'); loadPublished(TES
 sceneInput.addEventListener('keydown', e => e.key === 'Enter' && loadPublished(sceneInput.value));
 assetInput.addEventListener('keydown', e => e.key === 'Enter' && loadDirect(assetInput.value));
 
-frame.addEventListener('load', () => active && setStatus('LIVE', true));
+frame.addEventListener('load', () => active && setStatus('已載入', true));
 
 fullscreenBtn.addEventListener('click', async () => {
   if (!document.fullscreenElement) await frame.parentElement.requestFullscreen?.();
