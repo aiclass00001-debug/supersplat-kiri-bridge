@@ -1,3 +1,4 @@
+import { GestureControl } from './gestureControl.js';
 const TEST_SCENE = 'https://superspl.at/scene/11d081f5';
 
 const $ = s => document.querySelector(s);
@@ -62,6 +63,30 @@ function validateAsset(raw) {
   return u.toString();
 }
 
+
+function normalizeDirectAssetUrl(raw) {
+  const url = validateAsset(raw);
+
+  try {
+    const u = new URL(url);
+
+    // GitHub Release test repo:
+    // https://github.com/aiclass00001-debug/supersplat-kiri-bridge/releases/download/TAG/file.sog
+    //
+    // Convert to same-origin Netlify proxy:
+    // /github-release/TAG/file.sog
+    const releasePrefix =
+      '/aiclass00001-debug/supersplat-kiri-bridge/releases/download/';
+
+    if (u.hostname === 'github.com' && u.pathname.startsWith(releasePrefix)) {
+      const tail = u.pathname.slice(releasePrefix.length);
+      return new URL(`/github-release/${tail}`, location.origin).toString();
+    }
+  } catch (_) {}
+
+  return url;
+}
+
 function viewerOptions() {
   const q = new URLSearchParams();
   if ($('#noui').checked) q.set('noui','');
@@ -99,15 +124,23 @@ function loadPublished(value) {
 
 function loadDirect(value) {
   try {
-    const asset = validateAsset(value);
+    const asset = normalizeDirectAssetUrl(value);
     const q = viewerOptions();
+    q.set('settings', './settings.json');
     q.set('content', asset);
+    // V0.3.1: force WebGL during Direct Asset testing.
+    // This reduces browser/WebGPU variance and is also the path required later for WebXR.
+    q.set('webgl', '');
     const src = `./viewer.html?${q.toString()}`;
     const share = new URL(location.href);
     share.search = '';
     share.searchParams.set('asset', asset);
     activate(src, '本站自架 VIEWER', new URL(asset).pathname.split('/').pop(), share.toString());
-    assetInput.value = asset;
+    if (asset.includes('/github-release/')) {
+      notify('GitHub Release 已改走 Netlify 同網域代理');
+    } else {
+      assetInput.value = asset;
+    }
   } catch (e) { notify(e.message); setStatus('錯誤'); }
 }
 
@@ -141,3 +174,195 @@ if (params.get('asset')) {
   sceneInput.value = params.get('scene');
   loadPublished(params.get('scene'));
 }
+
+
+// ------------------------------------------------------------
+// V0.3 Gesture -> SuperSplat Local Viewer interaction bridge
+// ------------------------------------------------------------
+const gestureVideo = document.querySelector('#gestureVideo');
+const gestureToggle = document.querySelector('#gestureToggle');
+const gestureState = document.querySelector('#gestureState');
+const gestureLabel = document.querySelector('#gestureLabel');
+const gestureModeNote = document.querySelector('#gestureModeNote');
+
+const gesture = new GestureControl();
+let gestureRAF = 0;
+let gestureEnabled = false;
+let virtualPointer = { x: 0.5, y: 0.5 };
+
+function setGestureState(state, text) {
+  gestureState.textContent = text;
+  gestureState.classList.toggle('active', state === 'active');
+  gestureState.classList.toggle('error', state === 'error');
+}
+
+function getLocalViewerCanvas() {
+  if (!active || active.runtime !== '本站自架 VIEWER') return null;
+
+  try {
+    const doc = frame.contentDocument || frame.contentWindow?.document;
+    return doc?.querySelector('canvas') || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+let gestureDragActive = false;
+let gestureDragPos = { x: 0.5, y: 0.5 };
+const GESTURE_POINTER_ID = 777;
+
+function prepareSyntheticPointerCanvas(canvas) {
+  // SuperSplat's InputController calls setPointerCapture/releasePointerCapture.
+  // Browsers reject capture for synthetic PointerEvents because they are not
+  // backed by a real hardware pointer. In our same-origin self-hosted viewer,
+  // make capture a harmless no-op for the gesture bridge only.
+  if (!canvas.__gsGestureCapturePatched) {
+    try {
+      canvas.setPointerCapture = () => {};
+      canvas.releasePointerCapture = () => {};
+      canvas.hasPointerCapture = () => false;
+      canvas.__gsGestureCapturePatched = true;
+    } catch (_) {}
+  }
+}
+
+function pointerEvent(canvas, type, x, y, buttons = 1) {
+  const rect = canvas.getBoundingClientRect();
+  const clientX = rect.left + rect.width * x;
+  const clientY = rect.top + rect.height * y;
+
+  canvas.dispatchEvent(new PointerEvent(type, {
+    bubbles: true,
+    cancelable: true,
+    composed: true,
+    pointerId: GESTURE_POINTER_ID,
+    pointerType: 'mouse',
+    isPrimary: true,
+    button: type === 'pointerup' ? 0 : 0,
+    buttons,
+    clientX,
+    clientY,
+    screenX: clientX,
+    screenY: clientY,
+    pressure: buttons ? 0.5 : 0
+  }));
+}
+
+function beginGestureOrbit() {
+  const canvas = getLocalViewerCanvas();
+  if (!canvas || gestureDragActive) return false;
+
+  prepareSyntheticPointerCanvas(canvas);
+  gestureDragPos = { x: 0.5, y: 0.5 };
+  pointerEvent(canvas, 'pointerdown', gestureDragPos.x, gestureDragPos.y, 1);
+  gestureDragActive = true;
+  return true;
+}
+
+function updateGestureOrbit(dx, dy) {
+  const canvas = getLocalViewerCanvas();
+  if (!canvas) return;
+
+  if (!gestureDragActive && !beginGestureOrbit()) return;
+
+  // MediaPipe normalized coordinates -> viewport drag movement.
+  const gainX = 2.8;
+  const gainY = 2.8;
+  gestureDragPos.x = Math.max(0.08, Math.min(0.92, gestureDragPos.x + dx * gainX));
+  gestureDragPos.y = Math.max(0.08, Math.min(0.92, gestureDragPos.y + dy * gainY));
+
+  pointerEvent(canvas, 'pointermove', gestureDragPos.x, gestureDragPos.y, 1);
+}
+
+function endGestureOrbit() {
+  if (!gestureDragActive) return;
+  const canvas = getLocalViewerCanvas();
+  if (canvas) {
+    pointerEvent(canvas, 'pointerup', gestureDragPos.x, gestureDragPos.y, 0);
+  }
+  gestureDragActive = false;
+}
+
+function dispatchZoom(delta) {
+  const canvas = getLocalViewerCanvas();
+  if (!canvas) return;
+
+  // Fists moving apart -> zoom in; together -> zoom out.
+  const wheel = Math.max(-180, Math.min(180, -delta * 4200));
+  canvas.dispatchEvent(new WheelEvent('wheel', {
+    bubbles: true,
+    cancelable: true,
+    deltaY: wheel,
+    deltaMode: WheelEvent.DOM_DELTA_PIXEL
+  }));
+}
+
+gesture.onStatusChange = (state, text) => {
+  setGestureState(state, text);
+};
+
+gesture.onGestureChange = (name) => {
+  gestureLabel.textContent = gesture.label();
+
+  // Keep one continuous drag session while the pointing gesture is active.
+  if (name === 'Pointing_Up') {
+    if (active?.runtime === '本站自架 VIEWER') beginGestureOrbit();
+  } else {
+    endGestureOrbit();
+  }
+};
+
+gesture.onRotationChange = (dx, dy) => {
+  gestureLabel.textContent = gesture.label();
+
+  if (active?.runtime !== '本站自架 VIEWER') {
+    gestureModeNote.classList.add('attention');
+    return;
+  }
+
+  updateGestureOrbit(dx, dy);
+};
+
+gesture.onZoomDelta = (delta) => {
+  gestureLabel.textContent = gesture.label();
+
+  if (active?.runtime !== '本站自架 VIEWER') {
+    gestureModeNote.classList.add('attention');
+    return;
+  }
+  dispatchZoom(delta);
+};
+
+function gestureLoop(t) {
+  gesture.detect(t);
+  if (gestureEnabled) gestureRAF = requestAnimationFrame(gestureLoop);
+}
+
+gestureToggle?.addEventListener('click', async () => {
+  if (!gestureEnabled) {
+    const ok = await gesture.init(gestureVideo);
+    if (!ok) return;
+
+    gestureEnabled = true;
+    gestureToggle.textContent = '關閉 WEBCAM 手勢';
+    gestureRAF = requestAnimationFrame(gestureLoop);
+  } else {
+    gestureEnabled = false;
+    cancelAnimationFrame(gestureRAF);
+    endGestureOrbit();
+    gesture.destroy();
+    setGestureState('idle', '未啟用');
+    gestureLabel.textContent = '等待啟用…';
+    gestureToggle.textContent = '啟用 WEBCAM 手勢';
+  }
+});
+
+// Update limitation hint when switching between hosted/local runtime.
+frame.addEventListener('load', () => {
+  const local = active?.runtime === '本站自架 VIEWER';
+  if (gestureModeNote) {
+    gestureModeNote.textContent = local
+      ? '目前是直接資產 / 自架 Viewer：Webcam 手勢可送入 Viewer 控制 Camera。'
+      : '目前是 SuperSplat 公開 Scene：官方 Viewer 為跨網域，Webcam 可辨識手勢，但 Camera 控制被瀏覽器 Same-Origin Policy 阻擋。';
+  }
+});
