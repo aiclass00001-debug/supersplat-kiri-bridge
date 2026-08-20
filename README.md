@@ -1,15 +1,21 @@
-# GS Bridge V0.5.3
+# GS Bridge V0.6.0 — UX / Camera Continuity Milestone
 
-## 修正
-- Pointing / Pinch 不再誤切粒子。
-- Open Palm 才會自動切粒子。
-- Closed Fist 只在粒子模式 Assemble。
-- Victory 長按 0.7 秒切換 Reality / Particle。
-- Webcam 開啟後保留真實 mouse/touch pointer capture。
-- 粒子 Points 跟 KIRI-Maker 一樣做 `rotation.x = Math.PI`。
-- 粒子縮放改成 KIRI-style origin + p90 radius。
-- Scene Resolver 支援 Streamed SOG / SOG / verified legacy PLY。
-- 平行 probe、12 秒 timeout、切換場景 abort 前一個載入。
-- 大型場景 viewer budget=2。
+本版在 V0.5.5 基礎上完成操作體驗整合：
 
-KIRI-Maker by Willjim, MIT License.
+- 手勢 HUD：Gesture / confidence / hold progress / mode
+- 靈敏度：Orbit Speed / Dolly Speed / Gesture Smoothing
+- Reset View：按鈕、雙擊 viewport、鍵盤 R
+- Reality ↔ Particle Camera Continuity：共享 yaw / pitch / distance / target / FOV 邏輯狀態
+- 手勢模式鎖：Camera Only / Particle Only / Full
+- Presentation Mode：P 鍵隱藏 UI，HUD 保留
+- Adaptive Particle Budget：150K / 300K / 600K / 1M
+
+## Camera continuity 說明
+Particle Camera 可直接讀寫完整 camera state。官方 self-hosted SuperSplat Viewer 目前未提供父頁穩定公開的 CameraManager API，因此 Reality 端採「同網域 input tracking + shared logical camera state」維持切換連續性；Reset Reality 使用 Viewer reload 回到 authored/default view，而不是依賴未公開內部 API。
+
+## 快捷鍵
+- `P`: Presentation Mode
+- `R`: Reset View
+- viewport 雙擊：Reset View
+
+KIRI-Maker by Willjim, MIT License。

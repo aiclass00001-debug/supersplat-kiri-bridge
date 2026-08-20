@@ -321,7 +321,7 @@ function joinRelative(baseUrl, file) {
   return new URL(file, baseUrl).toString();
 }
 
-async function decodeMetaFromRemote(metaUrl, suppliedMeta = null) {
+async function decodeMetaFromRemote(metaUrl, suppliedMeta = null, maxParticles = 300000) {
   const meta = suppliedMeta || await (await fetch(metaUrl)).json();
   const meansFiles = getFiles(meta, 'means', 2);
   const sh0Files = getFiles(meta, 'sh0', 1);
@@ -332,14 +332,14 @@ async function decodeMetaFromRemote(metaUrl, suppliedMeta = null) {
     fetchRgba(joinRelative(metaUrl, sh0Files[0]))
   ]);
 
-  return decodeCore(meta, meansLo, meansHi, sh0);
+  return decodeCore(meta, meansLo, meansHi, sh0, maxParticles);
 }
 
 async function loadFflate() {
   return import('https://esm.sh/fflate@0.8.2?bundle');
 }
 
-async function decodeBundledSog(url) {
+async function decodeBundledSog(url, maxParticles = 300000) {
   const r = await fetch(url);
   if (!r.ok) throw new Error(`SOG 載入失敗 (${r.status})`);
   const bytes = new Uint8Array(await r.arrayBuffer());
@@ -365,10 +365,10 @@ async function decodeBundledSog(url) {
     imageBytesToRgba(pick(sh0Files[0]))
   ]);
 
-  return decodeCore(meta, meansLo, meansHi, sh0);
+  return decodeCore(meta, meansLo, meansHi, sh0, maxParticles);
 }
 
-function decodeCore(meta, meansLo, meansHi, sh0) {
+function decodeCore(meta, meansLo, meansHi, sh0, maxParticles = 300000) {
   const count = Number(meta.count) || 0;
   if (!count) throw new Error('SOG meta.count 無效');
 
@@ -391,8 +391,7 @@ function decodeCore(meta, meansLo, meansHi, sh0) {
   );
 
   // KIRI particle layer does not need every Gaussian. Cap for stable browser performance.
-  const maxParticles = 300000;
-  const outCount = Math.min(available, maxParticles);
+  const outCount = Math.min(available, Math.max(50000, Number(maxParticles) || 300000));
   const step = available / outCount;
 
   const positions = new Float32Array(outCount * 3);
@@ -432,10 +431,11 @@ function decodeCore(meta, meansLo, meansHi, sh0) {
   return { positions, colors, count: outCount, sourceCount: available };
 }
 
-export async function loadParticleData(url, suppliedMeta = null) {
+export async function loadParticleData(url, suppliedMeta = null, options = {}) {
+  const maxParticles = Math.max(50000, Number(options.maxParticles) || 300000);
   const clean = String(url || '').split(/[?#]/)[0].toLowerCase();
-  if (clean.endsWith('.sog')) return decodeBundledSog(url);
-  if (clean.endsWith('.json')) return decodeMetaFromRemote(url, suppliedMeta);
+  if (clean.endsWith('.sog')) return decodeBundledSog(url, maxParticles);
+  if (clean.endsWith('.json')) return decodeMetaFromRemote(url, suppliedMeta, maxParticles);
   throw new Error('粒子模式目前支援 SOG / meta.json；Compressed PLY 先維持實景模式');
 }
 

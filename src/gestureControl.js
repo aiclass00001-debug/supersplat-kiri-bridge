@@ -67,6 +67,20 @@ export class GestureControl {
     this.onPinchChange = null;      // (active, deltaY, normalizedPinch)
     this.onScatterProgress = null;  // 0 gathered -> 1 scattered
     this.onModeToggle = null;
+    this.onOpenPalmHold = null;
+    this.onTelemetry = null;
+
+    // User-tunable gesture feel.
+    this.rotationSmoothing = 0.35;
+    this.filteredRotation = { x: 0, y: 0 };
+
+    // Camera gestures and particle-mode entry are intentionally isolated.
+    // Pinch / Pointing can never directly or indirectly enter Particle Mode.
+    this.lastCameraGestureAt = -Infinity;
+    this.openPalmSince = null;
+    this.openPalmTriggered = false;
+    this.openPalmHoldMs = 600;
+    this.cameraGestureCooldownMs = 800;
 
     this.victorySince = null;
     this.victoryTriggered = false;
@@ -228,6 +242,47 @@ export class GestureControl {
 
     this.updateStableGesture(smoothedGesture, confidence);
 
+    // Hard camera-gesture lock.
+    // Any Pinch/Pointing activity blocks Open-Palm mode entry for a cooldown period.
+    const cameraGestureNow =
+      this.pinchActive ||
+      smoothedGesture === 'Pinch' ||
+      smoothedGesture === 'Pointing_Up' ||
+      this.currentGesture === 'Pinch' ||
+      this.currentGesture === 'Pointing_Up';
+
+    if (cameraGestureNow) {
+      this.lastCameraGestureAt = performance.now();
+      this.openPalmSince = null;
+      this.openPalmTriggered = false;
+    }
+
+    // Dedicated Open-Palm intent path.
+    // It requires an explicit stabilized Open_Palm classification, a hold,
+    // and no recent camera gesture. Scatter progress itself has no authority
+    // to switch renderer mode.
+    const explicitOpenPalm =
+      !this.pinchActive &&
+      smoothedGesture === 'Open_Palm' &&
+      this.currentGesture === 'Open_Palm' &&
+      rawGesture === 'Open_Palm' &&
+      performance.now() - this.lastCameraGestureAt >= this.cameraGestureCooldownMs;
+
+    if (explicitOpenPalm) {
+      if (this.openPalmSince == null) this.openPalmSince = performance.now();
+
+      if (
+        !this.openPalmTriggered &&
+        performance.now() - this.openPalmSince >= this.openPalmHoldMs
+      ) {
+        this.openPalmTriggered = true;
+        this.onOpenPalmHold?.();
+      }
+    } else if (!cameraGestureNow) {
+      this.openPalmSince = null;
+      this.openPalmTriggered = false;
+    }
+
     // Hold Victory for ~0.7s to toggle once; release before toggling again.
     if (smoothedGesture === 'Victory' && confidence >= MIN_CONFIDENCE) {
       if (this.victorySince == null) this.victorySince = performance.now();
@@ -265,7 +320,10 @@ export class GestureControl {
         if (this.lastHandPos && this.inRotationMode) {
           const dx = currentHandPos.x - this.lastHandPos.x;
           const dy = currentHandPos.y - this.lastHandPos.y;
-          this.onRotationChange?.(dx, dy);
+          const a = Math.max(0.05, Math.min(0.95, this.rotationSmoothing));
+          this.filteredRotation.x = this.filteredRotation.x * (1 - a) + dx * a;
+          this.filteredRotation.y = this.filteredRotation.y * (1 - a) + dy * a;
+          this.onRotationChange?.(this.filteredRotation.x, this.filteredRotation.y);
         }
 
         this.lastHandPos = currentHandPos;
@@ -273,41 +331,57 @@ export class GestureControl {
       } else {
         this.inRotationMode = false;
         this.lastHandPos = null;
+        this.filteredRotation.x = 0;
+        this.filteredRotation.y = 0;
       }
     }
 
-    // KIRI continuous openness mapping for particle scatter/gather.
+    // Continuous openness is now DATA ONLY.
+    // It must never mutate currentGesture and must never switch renderer mode.
+    // During Pinch / Pointing it is frozen completely.
     if (landmarks) {
-      if (
-        this.currentGesture !== 'Victory' &&
-        this.currentGesture !== 'Pointing_Up' &&
-        this.currentGesture !== 'Pinch'
-      ) {
+      const cameraGestureActive =
+        this.pinchActive ||
+        this.currentGesture === 'Pinch' ||
+        this.currentGesture === 'Pointing_Up' ||
+        smoothedGesture === 'Pinch' ||
+        smoothedGesture === 'Pointing_Up';
+
+      if (!cameraGestureActive && this.currentGesture !== 'Victory') {
         const openness = this.calculateHandOpenness(landmarks);
         const filterWeight = 0.25;
+
         this.targetProgress =
           this.targetProgress * (1 - filterWeight) +
           openness * filterWeight;
 
-        // Keep display feedback compatible with KIRI behavior.
-        let displayGesture = 'none';
-        if (this.targetProgress > 0.70) displayGesture = 'Open_Palm';
-        else if (this.targetProgress < 0.30) displayGesture = 'Closed_Fist';
-
-        if (
-          displayGesture !== 'none' &&
-          displayGesture !== this.currentGesture
-        ) {
-          this.currentGesture = displayGesture;
-          this.onGestureChange?.(displayGesture, confidence);
-        }
+        // Only emit scatter data when an actual particle gesture is active
+        // or when the renderer is already using this continuous value.
+        this.onScatterProgress?.(this.targetProgress);
       }
-
-      this.onScatterProgress?.(this.targetProgress);
     } else if (this.currentGesture === 'none') {
       this.targetProgress = 0;
       this.onScatterProgress?.(0);
     }
+
+    const now = performance.now();
+    const openPalmHold = this.openPalmSince == null
+      ? 0
+      : Math.max(0, Math.min(1, (now - this.openPalmSince) / this.openPalmHoldMs));
+    const victoryHold = this.victorySince == null
+      ? 0
+      : Math.max(0, Math.min(1, (now - this.victorySince) / this.victoryHoldMs));
+
+    this.onTelemetry?.({
+      gesture: this.currentGesture,
+      confidence: this.gestureConfidence || confidence || 0,
+      pinchActive: this.pinchActive,
+      pinchRatio: Number.isFinite(pinchRatio) ? pinchRatio : null,
+      scatterProgress: this.targetProgress,
+      openPalmHold,
+      victoryHold,
+      running: this.isRunning
+    });
   }
 
   updateStableGesture(smoothedGesture, confidence) {
@@ -536,6 +610,15 @@ export class GestureControl {
       (a.y - b.y) ** 2 +
       ((a.z || 0) - (b.z || 0)) ** 2
     );
+  }
+
+  setSensitivity({ smoothing = null } = {}) {
+    if (smoothing != null) {
+      const s = Math.max(0, Math.min(1, Number(smoothing)));
+      // UI 0..1: higher means smoother, therefore lower response alpha.
+      this.rotationSmoothing = 0.75 - s * 0.60;
+      this.pinchFilterWeight = 0.48 - s * 0.34;
+    }
   }
 
   getGestureLabel() {
