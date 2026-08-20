@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#07090d">
-  <title>GS Bridge V0.2.2 — SuperSplat × KIRI</title>
+  <title>GS Bridge V0.3 — SuperSplat × KIRI</title>
   <meta name="description" content="Self-hosted SuperSplat Viewer bridge, prepared for KIRI-style cinematic and particle workflows.">
   <link rel="stylesheet" href="./styles.css">
 </head>
@@ -14,7 +14,7 @@
     <div class="brand">
       <div class="logo">GS</div>
       <div>
-        <h1>GS Bridge <span>V0.2</span></h1>
+        <h1>GS Bridge <span>V0.3</span></h1>
         <p>SuperSplat 執行環境 × KIRI 電影運鏡橋接</p>
       </div>
     </div>
@@ -68,6 +68,35 @@
         </div>
       </section>
 
+
+      <section id="gestureSection">
+        <div class="eyebrow">04 / WEBCAM 手勢控制</div>
+        <div class="gesture-card">
+          <div class="gesture-head">
+            <strong>MediaPipe 手部追蹤</strong>
+            <span id="gestureState" class="gesture-state">未啟用</span>
+          </div>
+
+          <div class="webcam-wrap">
+            <video id="gestureVideo" playsinline muted></video>
+            <div class="webcam-overlay">
+              <span id="gestureLabel">等待啟用…</span>
+            </div>
+          </div>
+
+          <button id="gestureToggle" class="full">啟用 WEBCAM 手勢</button>
+
+          <div class="gesture-help">
+            <div><b>☝️ 食指</b><span>鏡頭環繞</span></div>
+            <div><b>👊👊 雙拳</b><span>拉近 / 拉遠</span></div>
+          </div>
+
+          <p id="gestureModeNote" class="warning-note">
+            手勢 Camera 控制需使用「直接資產」模式；SuperSplat 公開 Scene 為跨網域官方 Viewer，只能顯示，不能由本站直接控制 Camera。
+          </p>
+        </div>
+      </section>
+
       <section class="technical">
         <div class="eyebrow">支援流程</div>
         <pre>SuperSplat / KIRI / LCC
@@ -106,7 +135,7 @@ WebXR / 影片輸出</pre>
   </main>
 
   <footer>
-    <span>V0.2</span><span>官方 @playcanvas/supersplat-viewer 執行環境</span>
+    <span>V0.3</span><span>官方 @playcanvas/supersplat-viewer 執行環境</span>
     <span class="spacer"></span><span id="footerMode">就緒</span>
   </footer>
 </div>
