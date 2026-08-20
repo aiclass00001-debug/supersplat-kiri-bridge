@@ -165,3 +165,12 @@ footer{display:flex;align-items:center;gap:9px;padding:0 13px;border-top:1px sol
 .particle-canvas{position:absolute;inset:0;width:100%!important;height:100%!important;z-index:2;background:#010205}
 #viewer{z-index:1}
 .overlay{z-index:4}
+
+.particle-canvas{
+  pointer-events:auto;
+  touch-action:none;
+  cursor:grab;
+}
+.particle-canvas:active{
+  cursor:grabbing;
+}

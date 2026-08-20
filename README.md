@@ -1,15 +1,31 @@
-# GS Bridge V0.5.3
+# GS Bridge V0.5.5 — Particle OrbitControls
 
-## 修正
-- Pointing / Pinch 不再誤切粒子。
-- Open Palm 才會自動切粒子。
-- Closed Fist 只在粒子模式 Assemble。
-- Victory 長按 0.7 秒切換 Reality / Particle。
-- Webcam 開啟後保留真實 mouse/touch pointer capture。
-- 粒子 Points 跟 KIRI-Maker 一樣做 `rotation.x = Math.PI`。
-- 粒子縮放改成 KIRI-style origin + p90 radius。
-- Scene Resolver 支援 Streamed SOG / SOG / verified legacy PLY。
-- 平行 probe、12 秒 timeout、切換場景 abort 前一個載入。
-- 大型場景 viewer budget=2。
+## 為什麼 KIRI 粒子模式可以用滑鼠旋轉
+
+KIRI-Maker 使用單一：
+- `THREE.PerspectiveCamera`
+- `THREE.WebGLRenderer`
+- `OrbitControls(camera, renderer.domElement)`
+
+Particle 與 Spark 共用相機與 renderer，切換模式只改 visibility。
+主迴圈仍持續 `controls.update()`。
+
+## GS Bridge V0.5.5
+
+SuperSplat Viewer 仍是 self-host Viewer iframe；Particle 是獨立 Three.js canvas，
+因此 Particle Mode 需要自己的 OrbitControls。
+
+新增：
+- Particle canvas `OrbitControls`
+- Left drag = Orbit
+- Wheel = Zoom
+- Right drag = Pan
+- Damping
+- Gesture Pointing / Pinch 修改同一顆 particle camera 並同步 controls
+- Particle canvas pointer event 不再漏到下面的 SuperSplat Viewer
+- controls 每個 interactive frame update
+- controls 在 dispose 時清理
+
+Gesture Channel Lock V0.5.4 全部保留。
 
 KIRI-Maker by Willjim, MIT License.

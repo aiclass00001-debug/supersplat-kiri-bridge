@@ -311,6 +311,18 @@ gesture.onGestureChange=(name)=>{
 
 };
 
+gesture.onOpenPalmHold=()=>{
+  // The only automatic route into Particle Mode.
+  if (particleReady && modeController?.mode !== 'particle') {
+    if (setRendererMode('particle')) {
+      particleSystem?.setTargetProgress(
+        Math.max(gesture.targetProgress || 0, 0.72)
+      );
+      notify('🤚 張手：切換粒子模式');
+    }
+  }
+};
+
 gesture.onModeToggle=()=>{
   const current = modeController?.mode || 'reality';
 
@@ -338,18 +350,8 @@ gesture.onScatterProgress=(progress)=>{
   $('#scatterReadout').textContent=`${pct}%`;
   $('#scatterSlider').value=pct;
 
-  // Only an actual Open Palm may auto-enter particle mode.
-  // Pointing and Pinch must remain camera-only gestures.
-  if (
-    particleReady &&
-    gesture.currentGesture === 'Open_Palm' &&
-    progress > 0.58 &&
-    modeController?.mode !== 'particle'
-  ) {
-    setRendererMode('particle');
-  }
-
-  // Gather/scatter affects the particle renderer only when it is already active.
+  // Scatter callback is data-only in V0.5.4.
+  // It cannot change Reality / Particle mode.
   if (particleReady && modeController?.mode === 'particle') {
     particleSystem?.setTargetProgress(progress);
   }
