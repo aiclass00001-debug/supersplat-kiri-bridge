@@ -17,7 +17,7 @@ await writeFile(new URL('index.css', OUT), css, 'utf8');
 await writeFile(new URL('index.js', OUT), js, 'utf8');
 
 // Copy our surrounding GS Bridge UI.
-for (const file of ['index.html', 'app.js', 'styles.css']) {
+for (const file of ['index.html', 'app.js', 'styles.css', 'gestureControl.js', 'gsBridgeAdapter.js', 'settings.json', 'sogDataLoader.js', 'particleSystem.js', 'modeController.js']) {
   await cp(new URL(file, SRC), new URL(file, OUT));
 }
 
