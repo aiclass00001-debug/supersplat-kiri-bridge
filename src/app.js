@@ -36,6 +36,7 @@ let gestureLock = 'full';
 let particleBudget = 300000;
 let presentationMode = false;
 let sharedCameraState = null;
+let viewerReadyTimer = null;
 
 function notify(text) {
   toastEl.textContent = text;
@@ -55,7 +56,7 @@ function setMode(next) {
 }
 function viewerOptions() {
   const q=new URLSearchParams();
-  q.set('settings','./settings.json');
+  q.set('settings','./settings.json?v=0.6.4');
   q.set('webgl','');
   q.set('budget','2');
   if ($('#noui')?.checked) q.set('noui','');
@@ -91,6 +92,7 @@ function activate(
     activeBlobViewerUrl = src;
   }
 
+  clearInterval(viewerReadyTimer);
   active={src,runtime,label,share,particleSource,meta};
   setStatus('載入中');
   placeholder.classList.add('hidden');
@@ -136,9 +138,9 @@ async function loadPublished(value) {
 
     const q = viewerOptions();
     q.set('content', resolved.viewerUrl);
-    if (resolved.settingsUrl) q.set('settings', resolved.settingsUrl);
+    // Keep known local settings; remote settings must not break Viewer initialization.
 
-    const src = `./viewer.html?${q.toString()}`;
+    const src = `./viewer.html?v=0.6.4&${q.toString()}`;
     const share = new URL(location.href);
     share.search = '';
     share.searchParams.set('scene', resolved.sceneId);
@@ -184,7 +186,7 @@ function loadDirect(value) {
     const asset=validateAsset(value);
     const q=viewerOptions();
     q.set('content',asset);
-    const src=`./viewer.html?${q.toString()}`;
+    const src=`./viewer.html?v=0.6.4&${q.toString()}`;
     const share=new URL(location.href);
     share.search='';
     share.searchParams.set('asset',asset);
@@ -302,7 +304,34 @@ $('#loadAsset').addEventListener('click',()=>loadDirect(assetInput.value));
 $('#demo').addEventListener('click',()=>{setMode('scene');loadPublished(TEST_SCENE);});
 sceneInput.addEventListener('keydown',e=>e.key==='Enter'&&loadPublished(sceneInput.value));
 assetInput.addEventListener('keydown',e=>e.key==='Enter'&&loadDirect(assetInput.value));
-frame.addEventListener('load',()=>active&&setStatus('Viewer 已啟動',true));
+frame.addEventListener('load', () => {
+  clearInterval(viewerReadyTimer);
+  if (!active) return;
+  const request = active;
+  const deadline = Date.now() + 30000;
+  setStatus('Viewer 渲染中');
+  const check = () => {
+    if (active !== request) {
+      clearInterval(viewerReadyTimer);
+      return;
+    }
+    try {
+      // Pinned Viewer exposes window.app only after its first valid rendered frame.
+      if (frame.contentWindow?.app?.root?.findByName('gsplat')) {
+        clearInterval(viewerReadyTimer);
+        setStatus('Viewer 已完成渲染', true);
+        return;
+      }
+    } catch (_) {}
+    if (Date.now() >= deadline) {
+      clearInterval(viewerReadyTimer);
+      setStatus('Viewer 尚未完成渲染');
+      notify('實景尚未完成渲染；請檢查 Console 或重新載入');
+    }
+  };
+  viewerReadyTimer = setInterval(check, 250);
+  check();
+});
 fullscreenBtn.addEventListener('click',async()=> {
   if(!document.fullscreenElement) await $('.viewport').requestFullscreen?.();
   else await document.exitFullscreen?.();

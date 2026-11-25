@@ -1,4 +1,11 @@
-# GS Bridge V0.6.3 — Smart Camera & Particle Alignment
+# GS Bridge V0.6.4 — Reality Viewer Recovery
+
+- Disable unvalidated remote Experience Settings override; use the local auto-frame settings.
+- Preserve the v0.6.3 particle alignment and gesture implementation.
+- Version the Viewer and settings URLs, and report readiness only after the first valid rendered frame.
+- Regression reported on scene 826659f3: white Reality view while particle data is available. Exact cause not yet verified; test Deploy Preview before merging.
+
+## v0.6.3 — Smart Camera & Particle Alignment
 
 - Try published v2 Experience Settings; fall back to official Viewer scene framing by omitting the fixed initial camera.
 - Normalize SOG particles about robust bounds in the same Z-180 world orientation as the pinned Viewer.
