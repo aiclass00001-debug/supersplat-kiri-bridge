@@ -1,13 +1,13 @@
 {
   "name": "supersplat-kiri-bridge",
-  "version": "0.6.1",
+  "version": "0.6.3",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "node build.mjs"
   },
   "dependencies": {
-    "@playcanvas/supersplat-viewer": "^1.28.0"
+    "@playcanvas/supersplat-viewer": "1.43.3"
   },
   "engines": {
     "node": ">=20"

@@ -15,17 +15,17 @@
 [[headers]]
   for = "/viewer.html"
   [headers.values]
-    Cache-Control = "public, max-age=3600"
+    Cache-Control = "no-cache"
 
 [[headers]]
   for = "/index.js"
   [headers.values]
-    Cache-Control = "public, max-age=3600"
+    Cache-Control = "no-cache"
 
 [[headers]]
   for = "/index.css"
   [headers.values]
-    Cache-Control = "public, max-age=3600"
+    Cache-Control = "no-cache"
 
 [[headers]]
   for = "/index.html"

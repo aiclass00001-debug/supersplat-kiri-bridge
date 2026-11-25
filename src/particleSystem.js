@@ -122,8 +122,8 @@ export class ParticleSystem {
     this.controls.dampingFactor = 0.05;
     this.controls.enablePan = true;
     this.controls.enableZoom = true;
-    this.controls.minDistance = 1.0;
-    this.controls.maxDistance = 14.0;
+    this.controls.minDistance = 0.03;
+    this.controls.maxDistance = 500.0;
     this.controls.target.set(0, 0, 0);
     this.controls.rotateSpeed = 0.8;
     this.controls.zoomSpeed = 0.9;
@@ -177,8 +177,7 @@ export class ParticleSystem {
 
     this.points = new THREE.Points(geometry, this.material);
 
-    // KIRI-Maker uses this to fix the Y/Z coordinate-system mismatch.
-    this.points.rotation.x = Math.PI;
+    // SOG local-to-world transform is applied in centerAndScale; no extra rotation.
 
     this.pivot = new THREE.Group();
     this.pivot.add(this.points);
@@ -193,40 +192,65 @@ export class ParticleSystem {
   }
 
   centerAndScale(data) {
-    const count = data.count;
-    const src = data.positions;
-    const colors = data.colors;
-
-    // Match KIRI-Maker's robust origin-based core radius.
-    // Do not shift the splat to a bounding-box center.
-    const sampleSize = Math.min(5000, count);
-    const distances = [];
-    const step = Math.max(1, Math.floor(count / Math.max(1, sampleSize)));
-
+    const {count, positions: src, colors} = data;
+    // Viewer 1.43.3 rotates SOG entities 180 degrees around Z. Work in the
+    // same world orientation before centering for KIRI's normalized effects.
+    const axes = [[], [], []];
+    const step = Math.max(1, Math.floor(count / 5000));
     for (let i = 0; i < count; i += step) {
-      const x = src[i * 3];
-      const y = src[i * 3 + 1];
-      const z = src[i * 3 + 2];
-      if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)) {
-        distances.push(Math.hypot(x, y, z));
-      }
+      const v = [-src[i*3], -src[i*3+1], src[i*3+2]];
+      if (v.every(Number.isFinite)) v.forEach((n,a) => axes[a].push(n));
     }
-
-    distances.sort((a, b) => a - b);
-    const p90 = distances.length
-      ? distances[Math.min(distances.length - 1, Math.floor(distances.length * 0.90))]
-      : 1;
-
-    const scale = p90 > 0.001 ? 1 / p90 : 1;
-
-    const positions = new Float32Array(count * 3);
-    for (let i = 0; i < count; i++) {
-      positions[i * 3] = src[i * 3] * scale;
-      positions[i * 3 + 1] = src[i * 3 + 1] * scale;
-      positions[i * 3 + 2] = src[i * 3 + 2] * scale;
+    if (!axes[0].length) throw new Error('No finite particle positions');
+    const ranges = axes.map(a => {
+      a.sort((x,y)=>x-y);
+      return [a[Math.floor((a.length-1)*0.01)], a[Math.ceil((a.length-1)*0.99)]];
+    });
+    const center = ranges.map(([lo,hi])=>(lo+hi)/2);
+    const radius = Math.hypot(...ranges.map(([lo,hi])=>(hi-lo)/2));
+    const scale = radius > 1e-6 ? 1.35/radius : 1;
+    this.normalization = {center, scale};
+    const positions = new Float32Array(count*3);
+    for (let i=0; i<count; i++) {
+      positions[i*3] = (-src[i*3]-center[0])*scale;
+      positions[i*3+1] = (-src[i*3+1]-center[1])*scale;
+      positions[i*3+2] = (src[i*3+2]-center[2])*scale;
     }
+    return {positions, colors, count};
+  }
 
-    return { positions, colors, count };
+  syncFromViewer(frame) {
+    try {
+      const entity = frame.contentWindow?.app?.root?.findByName('camera');
+      const cam = entity?.camera;
+      const n = this.normalization;
+      if (!cam || !n || !this.camera || !this.controls) return false;
+      const world = entity.getPosition();
+      const forward = entity.forward;
+      const pos = new THREE.Vector3(
+        (world.x-n.center[0])*n.scale,
+        (world.y-n.center[1])*n.scale,
+        (world.z-n.center[2])*n.scale
+      );
+      const dir = new THREE.Vector3(forward.x,forward.y,forward.z).normalize();
+      if (![pos.x,pos.y,pos.z,dir.x,dir.y,dir.z,cam.fov].every(Number.isFinite) || dir.lengthSq() < 0.5) return false;
+      const target = pos.clone().addScaledVector(dir, Math.max(0.03,-pos.dot(dir)));
+      const aspect = Math.max(0.01, this.camera.aspect);
+      const fov = cam.horizontalFov
+        ? 2*Math.atan(Math.tan(cam.fov*Math.PI/360)/aspect)*180/Math.PI
+        : cam.fov;
+      this.camera.fov = Math.max(1,Math.min(175,fov));
+      this.camera.position.copy(pos);
+      this.controls.target.copy(target);
+      this.controls.minDistance = Math.min(0.03,pos.distanceTo(target));
+      this.controls.maxDistance = Math.max(500,pos.distanceTo(target)*2);
+      this.camera.far = Math.max(1000,pos.length()*4+50);
+      this.camera.updateProjectionMatrix();
+      this.camera.lookAt(target);
+      this.controls.update();
+      this.initialCameraState = this.getCameraState();
+      return true;
+    } catch (_) { return false; }
   }
 
   setTargetProgress(v) {
