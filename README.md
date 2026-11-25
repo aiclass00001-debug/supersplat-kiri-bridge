@@ -1,4 +1,12 @@
-# GS Bridge V0.6.1 — Three-Finger Assemble
+# GS Bridge V0.6.2 — SOG Compatibility Hotfix
+
+## v0.6.2
+
+- Pin the official SuperSplat Viewer to 1.43.3 for newer SOG metadata compatibility.
+- Deploy the complete standalone Viewer distribution (including decoder assets) at the existing same-origin `viewer.html` URL.
+- Preserve the v0.6.1 UI, gesture, particle and scene resolver behavior. Browser rendering and particle regression tests are required before production rollout.
+
+## v0.6.1 — Three-Finger Assemble
 
 ## 手勢配置
 
