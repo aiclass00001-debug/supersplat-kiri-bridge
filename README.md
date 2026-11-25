@@ -1,4 +1,11 @@
-# GS Bridge V0.6.2 — SOG Compatibility Hotfix
+# GS Bridge V0.6.3 — Smart Camera & Particle Alignment
+
+- Try published v2 Experience Settings; fall back to official Viewer scene framing by omitting the fixed initial camera.
+- Normalize SOG particles about robust bounds in the same Z-180 world orientation as the pinned Viewer.
+- Match the live Reality camera and field of view when entering particles; return to the existing Reality pose (not full bidirectional sync).
+- Test public settings discovery and framing, both sculpt URLs, large scenes, and gestures in Deploy Preview before merging.
+
+## v0.6.2 — SOG Compatibility Hotfix
 
 ## v0.6.2
 

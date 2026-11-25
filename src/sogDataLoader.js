@@ -212,6 +212,26 @@ async function resolveLegacy(sceneId, signal, onStatus) {
   return null;
 }
 
+// Published Experience Settings may be served alongside the assets or at scene root.
+async function resolveExperienceSettings(sceneId, revision, signal) {
+  const urls = [
+    `${SUPERSPLOT_CDN}/${sceneId}/v${revision}/settings.json`,
+    `${SUPERSPLOT_CDN}/${sceneId}/settings.json`
+  ];
+  const results = await Promise.all(urls.map(async url => {
+    try {
+      const settings = await getJson(url, signal, 1800);
+      const pose = settings?.cameras?.[0]?.initial;
+      const validVec = value => Array.isArray(value) && value.length === 3 && value.every(Number.isFinite);
+      if (settings?.version === 2 && validVec(pose?.position) && validVec(pose?.target) &&
+          Number.isFinite(pose.fov) && pose.fov > 0 && pose.fov < 180 &&
+          Math.hypot(...pose.position.map((v,i) => v-pose.target[i])) > 1e-6) return url;
+    } catch (_) { /* use the local auto-frame fallback */ }
+    return null;
+  }));
+  return results.find(Boolean) || null;
+}
+
 export async function resolveSuperSplatScene(
   raw,
   onStatus = () => {},
@@ -244,6 +264,7 @@ export async function resolveSuperSplatScene(
         viewerUrl: modern.url,
         particleUrl: modern.url,
         meta: modern.meta,
+        settingsUrl: await resolveExperienceSettings(sceneId, modern.version, overall.signal),
         revokeViewerUrl: false
       };
     }
@@ -258,6 +279,7 @@ export async function resolveSuperSplatScene(
       return {
         ...legacy,
         sceneId,
+        settingsUrl: await resolveExperienceSettings(sceneId, legacy.version, overall.signal),
         particleUrl: null
       };
     }

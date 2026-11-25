@@ -136,6 +136,7 @@ async function loadPublished(value) {
 
     const q = viewerOptions();
     q.set('content', resolved.viewerUrl);
+    if (resolved.settingsUrl) q.set('settings', resolved.settingsUrl);
 
     const src = `./viewer.html?${q.toString()}`;
     const share = new URL(location.href);
@@ -240,8 +241,10 @@ function captureCameraStateFromCurrentMode() {
 }
 
 function applySharedCameraToParticle() {
-  if (!particleSystem || !sharedCameraState) return;
-  particleSystem.setCameraState?.(sharedCameraState);
+  if (!particleSystem) return;
+  // The normalized particle scene must use the real Viewer camera, not the
+  // adapter's approximate gesture accumulator. If unavailable, frame particles.
+  if (!particleSystem.syncFromViewer?.(frame)) particleSystem.resetView?.();
 }
 
 function syncParticleBackToReality() {
@@ -249,10 +252,8 @@ function syncParticleBackToReality() {
   const state = particleSystem.getCameraState?.();
   if (state) {
     sharedCameraState = state;
-    // Adapter retains the state so the next Reality gesture continues from
-    // the same logical yaw/pitch/distance even though the official Viewer
-    // does not expose a stable public CameraManager API to the parent page.
-    gsBridge.setCameraState?.(state);
+    // Keep the hidden Reality viewer at its last actual pose. Do not feed
+    // normalized particle coordinates into its world-space gesture adapter.
   }
 }
 
